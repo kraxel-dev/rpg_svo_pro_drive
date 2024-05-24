@@ -333,7 +333,7 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)
   cv::Mat image;
   try
   {
-    image = cv_bridge::toCvCopy(msg)->image;
+    image = cv_bridge::toCvCopy(msg, "mono8")->image;
   }
   catch (cv_bridge::Exception& e)
   {
