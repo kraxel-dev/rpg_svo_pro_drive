@@ -14,6 +14,10 @@ void SvoNodeBase::initThirdParty(int argc, char **argv)
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InstallFailureSignalHandler();
 
+  // Hardcode verbosity level
+  FLAGS_logtostderr = 1;  // Log messages to standard error
+  FLAGS_v = 40;            // Set verbosity level (adjust as needed)
+  
   ros::init(argc, argv, "svo");
 }
 
