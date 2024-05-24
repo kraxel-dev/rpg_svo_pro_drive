@@ -1,0 +1,27 @@
+label: "zed2i_left_rectified"
+id: titikaka
+cameras:
+- camera:
+    label: zed2i_left
+    id: titikaka
+    line-delay-nanoseconds: 0
+    image_height: 720
+    image_width: 1280
+    type: pinhole
+    intrinsics:
+      cols: 1
+      rows: 4
+      data: [533.6722412109375,  533.6722412109375, 651.6022338867188, 364.79913330078125]
+    distortion:
+      type: radial-tangential
+      parameters: 
+        cols: 1
+        rows: 4
+        data: [0, 0, 0, 0]
+  T_B_C:
+      cols: 4
+      rows: 4
+      data: [1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 0]
