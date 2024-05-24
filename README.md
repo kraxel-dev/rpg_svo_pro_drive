@@ -1,3 +1,14 @@
+# Adjusted to drive
+
+## Build
+1. Build as original but keep in mind to rename repo folder back to `rpg_svp_pro_open` after symlinking this package into your workspace. Otherwise the dependencies will not build.
+## Run
+### Run mono example
+1. Run on zed2i mono rosbag data    
+    ```
+    roslaunch svo_ros run_from_bag_zed2i.launch cam_name:=zed2i_left_rectified
+    ```
+# Original Readme
 # rpg_svo_pro
 
 This repo includes **SVO Pro** which is the newest version of Semi-direct Visual Odometry (SVO) developed over the past few years at the Robotics and Perception Group (RPG).
