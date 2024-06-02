@@ -872,24 +872,31 @@ AbstractInitialization::UniquePtr makeInitializer(
   switch(init_options.init_type)
   {
     case InitializerType::kHomography:
+      VLOG(1) << "Initializer Type: kHomography";
       initializer.reset(new HomographyInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kTwoPoint:
+      VLOG(1) << "Initializer Type: kTwoPoint";
       initializer.reset(new TwoPointInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kFivePoint:
+      VLOG(1) << "Initializer Type: kFivePoint";
       initializer.reset(new FivePointInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kOneShot:
+      VLOG(1) << "Initializer Type: kOneShot";
       initializer.reset(new OneShotInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kStereo:
+      VLOG(1) << "Initializer Type: kStereo";
       initializer.reset(new StereoInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kArrayGeometric:
+      VLOG(1) << "Initializer Type: kArrayGeometric";
       initializer.reset(new ArrayInitGeometric(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kArrayOptimization:
+      VLOG(1) << "Initializer Type: kArrayOptimization";
       initializer.reset(new ArrayInitOptimization(init_options, tracker_options, detector_options, cams));
       break;
     default:

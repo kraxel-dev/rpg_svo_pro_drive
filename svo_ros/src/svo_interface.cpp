@@ -325,7 +325,7 @@ bool SvoInterface::setImuPrior(const int64_t timestamp_nanoseconds)
   return true;
 }
 
-void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)
+void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE: actual mono ros callback
 {
   if(idle_)
     return;

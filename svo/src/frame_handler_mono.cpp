@@ -38,11 +38,11 @@ FrameHandlerMono::FrameHandlerMono(
 UpdateResult FrameHandlerMono::processFrameBundle()
 {
   UpdateResult res = UpdateResult::kFailure;
-  if(stage_ == Stage::kTracking)
+  if(stage_ == Stage::kTracking)  // NOTE: tracking
   {
     res = processFrame();
   }
-  else if(stage_ == Stage::kInitializing)
+  else if(stage_ == Stage::kInitializing)  // NOTE: actual initialization
   {
     res = processFirstFrame();
   }
@@ -60,7 +60,7 @@ void FrameHandlerMono::addImage(
   addImageBundle({img}, timestamp);
 }
 
-UpdateResult FrameHandlerMono::processFirstFrame()
+UpdateResult FrameHandlerMono::processFirstFrame()  // NOTE: Initializing
 {
   if(!initializer_->have_depth_prior_)
   {
@@ -116,7 +116,7 @@ UpdateResult FrameHandlerMono::processFirstFrame()
   return UpdateResult::kKeyframe;
 }
 
-UpdateResult FrameHandlerMono::processFrame()
+UpdateResult FrameHandlerMono::processFrame()  // NOTE: Tracking
 {
   VLOG(40) << "Updating seeds in overlapping keyframes...";
   // this is useful when the pipeline is with the backend,

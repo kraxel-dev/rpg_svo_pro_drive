@@ -38,7 +38,7 @@ enum class KeyframeCriterion {
 };
 
 /// Options for base frame handler module. Sets tracing and quality options.
-struct BaseOptions
+struct BaseOptions  // NOTE: parameters visual frontend with detailed explanation
 {
   /// The VO only keeps a list of N keyframes in the map. If a new keyframe
   /// is selected, then one furthest away from the current position is removed

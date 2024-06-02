@@ -38,6 +38,9 @@ size_t SparseImgAlign::run(
   CHECK(!ref_frames->empty());
   CHECK_EQ(ref_frames->size(), cur_frames->size());
 
+  VLOG(40) << "Nr reference frames: " << ref_frames->size();
+  VLOG(40) << "Nr current frames: " << cur_frames->size();
+
   // Select all visible features and subsample if required.
   fts_vec_.clear();
   size_t n_fts_to_track = 0;
@@ -72,7 +75,10 @@ size_t SparseImgAlign::run(
 
   // the variable to be optimized is the imu-pose of the current frame
   Transformation T_icur_iref =
-      cur_frames_->at(0)->T_imu_world() * T_iref_world_.inverse();
+      cur_frames_->at(0)->T_imu_world() * T_iref_world_.inverse();  
+
+  VLOG(40) << "Pose prior for image alginment: " << std::endl;
+  VLOG(40) <<  T_icur_iref << std::endl;
 
   SparseImgAlignState state;
   state.T_icur_iref = T_icur_iref;
@@ -105,6 +111,8 @@ size_t SparseImgAlign::run(
     f->T_f_w_ = f->T_cam_imu()*state.T_icur_iref*T_iref_world_;
   }
 
+  VLOG(40) << "Relative pose recovered from alignment: " << std::endl;
+  VLOG(40) << "\n" << state.T_icur_iref << std::endl;
   // reset initial values of illumination estimation TODO: make reset function
   alpha_init_ = 0.0;
   beta_init_ = 0.0;

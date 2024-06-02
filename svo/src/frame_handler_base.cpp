@@ -6,6 +6,9 @@
 // This file is subject to the terms and conditions defined in the file
 // 'LICENSE', which is part of this source code package.
 
+#include <sstream>
+#include <limits>
+
 #include "svo/frame_handler_base.h"
 
 #include <functional>
@@ -50,6 +53,111 @@ inline double distanceFirstTwoKeyframes(svo::Map& map)
        second_kf->T_world_imu().getPosition()).norm();
   return dist;
 }
+
+std::shared_ptr<svo::Transformation> parsePoseByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp)
+{
+    std::shared_ptr<svo::Transformation> refPose = nullptr;
+
+    std::ifstream data(tumFilePath);
+    std::string line;
+    
+    // iterate over all csv rows
+    while (std::getline(data, line))
+    {
+
+        std::stringstream lineStream(line);
+        std::string cell;
+        int i = 0;
+        double x, y, z;
+        double qx, qy, qz, qw;
+        uint64_t timestamp = 0;
+
+        bool skipRow = true;
+
+        // iterate over current row content
+        while (std::getline(lineStream, cell, ' '))
+        {
+            if (i == 0)
+            {
+              // parse scientific e9 notation into double 
+              double stampDouble;
+              std::setprecision(15);
+              
+              // VLOG(40) << cell;
+              std::istringstream iss(cell);
+              iss.precision(15);
+              iss >> stampDouble;
+              stampDouble *= 1e9;  // convert secs to nsecs
+              // VLOG(40) << std::fixed <<"TUM Trajectory: Parsed double timestamp: " << stampDouble;
+
+              // convert into nanosecond integer timestamp
+              timestamp = static_cast<uint64_t>(stampDouble);
+              // VLOG(40) << "TUM Trajectory: Parsed nsec timestamp: " << timestamp;
+
+              uint64_t diff = 25; //  msec time
+              diff *= 1e6;  // extend to nsec
+              
+              // skip if not our desired row
+              if ( std::max(timestamp , nsecRefStamp) - std::min(timestamp , nsecRefStamp) <= diff)
+              {
+                skipRow = false;
+                VLOG(40) << "TUM trajectory file parsing: matching timestamp found at: " << timestamp ;
+              }
+            }
+
+
+            // parse pose
+            if (i == 1)
+            {
+                x = (std::stod(cell));
+            }
+            if (i == 2)
+            {
+                y = (std::stod(cell));
+            }
+            if (i == 3)
+            {
+                z = (std::stod(cell));
+            }
+            if (i == 4)
+            {
+                qx = std::stod(cell);
+            }
+            if (i == 5)
+            {
+                qy = std::stod(cell);
+            }
+            if (i == 6)
+            {
+                qz = std::stod(cell);
+            }
+            if (i == 7)
+            {
+                qw = std::stod(cell);
+            }
+
+            i = i + 1;
+        
+        }
+
+        if (skipRow) {continue;}  // skip to new row if timestamp dont match
+        
+        svo::Quaternion quat_world_frame(qw, qx, qy, qz);  // rotates cam into world which is the rotation of camera with respect to the world
+        svo::Position pos_world_frame(x, y, z);  // position of cam with respect to world
+        svo::Transformation pose_w_f(pos_world_frame, quat_world_frame);
+
+        refPose = std::make_shared<svo::Transformation>(pose_w_f);
+        
+        data.close();
+
+        return refPose;
+    }
+    VLOG(1) << "WARNING: no suitable pose found";
+    data.close();
+
+    return refPose;
+}
+
 }
 
 namespace svo
@@ -143,7 +251,7 @@ FrameHandlerBase::FrameHandlerBase(const BaseOptions& base_options, const Reproj
   //detector_options2.detector_type = DetectorType::kGridGrad;
 
   depth_filter_.reset(new DepthFilter(depthfilter_options, detector_options2, cams_));
-  initializer_ = initialization_utils::makeInitializer(init_options, tracker_options, detector_options, cams_);
+  initializer_ = initialization_utils::makeInitializer(init_options, tracker_options, detector_options, cams_);  // NOTE: initializer type called here
   overlap_kfs_.resize(cams_->getNumCameras());
 
   VLOG(1) << "SVO initialized";
@@ -347,17 +455,34 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     // TODO(cfo): remove same from processFrame in mono.
     if (last_frames_)
     {
-      VLOG(40) << "Predict pose of new image using motion prior.";
-      getMotionPrior(false);
 
+      // KRAXEL EDIT:
+      // -------------------- retrieve timestamps
+      uint64_t nsec_last = last_frames_->at(0).get()->timestamp_;  // nsec timestamp of last used image
+      uint64_t nsec_new = frame_bundle->at(0)->timestamp_;  // nsec timestamp of currently processed image
+      VLOG(40) << "LAST IMAGE TIMESTAMP: " << nsec_last;
+      VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << nsec_new;
+
+      // -------------------- fetch motion from file
+      std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards.tum";
+      
+      std::shared_ptr<svo::Transformation> T_last = parsePoseByNsec(traj_file_name, nsec_last);
+      std::shared_ptr<svo::Transformation> T_new = parsePoseByNsec(traj_file_name, nsec_new);
+
+
+      VLOG(40) << "Predict pose of new image using motion prior.";  // NOTE: motion prior is selected here
+      getMotionPrior(false);
+      
       // set initial pose estimate
       for (size_t i = 0; i < new_frames_->size(); ++i)
       {
+        
         new_frames_->at(i)->T_f_w_ = new_frames_->at(i)->T_cam_imu() * T_newimu_lastimu_prior_
             * last_frames_->at(i)->T_imu_world();
       }
     }
   }
+
 
   // Perform tracking.
   update_res_ = processFrameBundle();
@@ -548,7 +673,7 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
   }
   // Call callbacks.
   VLOG(40) << "Triggering addFrameBundle() callbacks...";
-  triggerCallbacks(last_frames_);
+  triggerCallbacks(last_frames_);  // NOTE: frame handler mono callbacks (non-ros) are called here (mono processing callback)
   return true;
 }
 
@@ -622,13 +747,14 @@ size_t FrameHandlerBase::sparseImageAlignment()
     SVO_START_TIMER("sparse_img_align");
   }
   sparse_img_align_->reset();
-  if (have_motion_prior_)
+  if (have_motion_prior_)  // NOTE: motion prior was deemed avaliable and stored upstream
   {
     SVO_DEBUG_STREAM("Apply IMU Prior to Image align");
     double prior_trans = options_.img_align_prior_lambda_trans;
     if (map_->size() < 5)
-      prior_trans = 0; // during the first few frames we don't want a prior (TODO)
+      VLOG(40) << "Bootstrapping Map. no motion prior wanted", prior_trans = 0; // during the first few frames we don't want a prior (TODO)
 
+    // NOTE: insert relative pose prior
     sparse_img_align_->setWeightedPrior(T_newimu_lastimu_prior_, 0.0, 0.0,
                                         options_.img_align_prior_lambda_rot,
                                         prior_trans, 0.0, 0.0);
