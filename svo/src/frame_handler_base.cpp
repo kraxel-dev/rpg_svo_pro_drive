@@ -54,7 +54,7 @@ inline double distanceFirstTwoKeyframes(svo::Map& map)
   return dist;
 }
 
-std::shared_ptr<svo::Transformation> parsePoseByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp)
+std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp, const bool boundLower)
 {
     std::shared_ptr<svo::Transformation> refPose = nullptr;
 
@@ -94,14 +94,21 @@ std::shared_ptr<svo::Transformation> parsePoseByNsec(const std::string &tumFileP
               timestamp = static_cast<uint64_t>(stampDouble);
               // VLOG(40) << "TUM Trajectory: Parsed nsec timestamp: " << timestamp;
 
-              uint64_t diff = 25; //  msec time
-              diff *= 1e6;  // extend to nsec
+              uint64_t thresh = 24; //  msec time
+              thresh *= 1e6;  // extend to nsec
+
+              if (boundLower && timestamp < nsecRefStamp) {
+                // skip row as long as current row timestamp is below ref stamp. this forces new images to not grab past poses 
+                continue;
+              }
               
+              uint64_t diff = std::max(timestamp , nsecRefStamp) - std::min(timestamp , nsecRefStamp);
               // skip if not our desired row
-              if ( std::max(timestamp , nsecRefStamp) - std::min(timestamp , nsecRefStamp) <= diff)
+              if ( diff <= thresh)
               {
                 skipRow = false;
                 VLOG(40) << "TUM trajectory file parsing: matching timestamp found at: " << timestamp ;
+                VLOG(40) << "Matching stamp timediff in msec: " << diff / 1e6 ;
               }
             }
 
@@ -466,17 +473,34 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
       // -------------------- fetch motion from file
       std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards.tum";
       
-      std::shared_ptr<svo::Transformation> T_last = parsePoseByNsec(traj_file_name, nsec_last);
-      std::shared_ptr<svo::Transformation> T_new = parsePoseByNsec(traj_file_name, nsec_new);
-
-
+      std::shared_ptr<svo::Transformation> T_last = poseFromTumByNsec(traj_file_name, nsec_last, false);
+      std::shared_ptr<svo::Transformation> T_new = poseFromTumByNsec(traj_file_name, nsec_new, true); // bound timestamps to newer poses only
+      
+      // -------------------- original motion prior setter
       VLOG(40) << "Predict pose of new image using motion prior.";  // NOTE: motion prior is selected here
       getMotionPrior(false);
       
+      // -------------------- get relative motion between tum file poses
+      svo::Transformation T_rel;
+      if (T_last && T_new) {
+        svo::Transformation T_new_deref = *T_new;
+        svo::Transformation T_last_deref = *T_last;
+
+        T_rel = T_last->inverse() *  T_new_deref;  // motion from last pose to current pose
+        VLOG(40)  << "Relative motion between current and last image calculated!";
+        std::cout << T_rel.getPosition().x()  << std::endl; 
+        std::cout << T_rel.getPosition().y()  << std::endl; 
+        std::cout << T_rel.getPosition().z()  << std::endl; 
+
+
+        // -------------------- force hardcoded motion prior 
+        T_newimu_lastimu_prior_ = T_rel.inverse();
+        have_motion_prior_ = true;
+      }
+
       // set initial pose estimate
       for (size_t i = 0; i < new_frames_->size(); ++i)
       {
-        
         new_frames_->at(i)->T_f_w_ = new_frames_->at(i)->T_cam_imu() * T_newimu_lastimu_prior_
             * last_frames_->at(i)->T_imu_world();
       }
@@ -750,13 +774,29 @@ size_t FrameHandlerBase::sparseImageAlignment()
   if (have_motion_prior_)  // NOTE: motion prior was deemed avaliable and stored upstream
   {
     SVO_DEBUG_STREAM("Apply IMU Prior to Image align");
+    VLOG(40) << "Apply IMU Prior to Image align";
+
+    // KRAXEL EDIT
+    // -------------------- force weights for considereing motion prior
     double prior_trans = options_.img_align_prior_lambda_trans;
-    if (map_->size() < 5)
-      VLOG(40) << "Bootstrapping Map. no motion prior wanted", prior_trans = 0; // during the first few frames we don't want a prior (TODO)
+    double prior_rot = options_.img_align_prior_lambda_rot;
+    
+    prior_trans = 0.2;
+    prior_rot = 0.2;
+
+    if (map_->size() < 5) {
+      VLOG(40) << "Bootstrapping Map. no motion prior wanted";
+      prior_trans = 0; // during the first few frames we don't want a prior (TODO)
+      prior_rot = 0;
+    }
 
     // NOTE: insert relative pose prior
+    VLOG(40) << "Actually setting prior for image alignment worker!";
+    VLOG(40) << "Weighting translation prior: " << prior_trans;
+    VLOG(40) << "Weighting rotation: prior: " << prior_rot;
+    // KRAXEL EDIT
     sparse_img_align_->setWeightedPrior(T_newimu_lastimu_prior_, 0.0, 0.0,
-                                        options_.img_align_prior_lambda_rot,
+                                        prior_rot,
                                         prior_trans, 0.0, 0.0);
   }
   sparse_img_align_->setMaxNumFeaturesToAlign(options_.img_align_max_num_features);
