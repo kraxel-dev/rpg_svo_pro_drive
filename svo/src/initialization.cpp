@@ -29,6 +29,8 @@
 #include <vikit/sample.h>
 #include <opencv2/video/tracking.hpp> // for lucas kanade tracking
 #include <opencv2/opencv.hpp> // for display
+#include <svo/io.h>  // parse tum file
+
 
 #ifdef SVO_USE_OPENGV
 // used for opengv
@@ -58,6 +60,7 @@
 # include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 # include <gtsam/slam/BetweenFactor.h>
 #endif
+
 
 namespace svo {
 
@@ -119,6 +122,7 @@ InitResult HomographyInit::addFrameBundle(
   if(!trackFeaturesAndCheckDisparity(frames_cur))
     return InitResult::kTracking;
 
+  VLOG(40)  << "Homography init" ;
   // Create vector of bearing vectors
   const FrameBundlePtr frames_ref = tracker_->getOldestFrameInTrack(0);
   const Frame& frame_ref = *frames_ref->at(0);
@@ -293,9 +297,14 @@ InitResult FivePointInit::addFrameBundle(
     const FrameBundlePtr& frames_cur)
 {
 #ifdef SVO_USE_OPENGV
+  VLOG(40) << "5 point initialization!" ;
   // Track and detect features.
-  if(!trackFeaturesAndCheckDisparity(frames_cur))
-    return InitResult::kTracking;
+  if(!trackFeaturesAndCheckDisparity(frames_cur)) {
+    VLOG(40) << "Initializer still tracking as min disparity still not reached!";
+    return InitResult::kTracking;}
+
+  // KRAXEL EDIT
+  VLOG(40) << "Min disparity reached! We can triangulate now!" ;
 
   // Create vector of bearing vectors
   const FrameBundlePtr frames_ref = tracker_->getOldestFrameInTrack(0);
@@ -341,9 +350,37 @@ InitResult FivePointInit::addFrameBundle(
           << "# Inliers = " << ransac.inliers_.size() << std::endl
           << "Model = " << ransac.model_coefficients_ << std::endl
           << "T.rotation_matrix() = " << T_cur_from_ref_.getRotationMatrix() << std::endl
-          << "T.translation() = " << T_cur_from_ref_.getPosition();
+          << "T.translation() x = " << T_cur_from_ref_.getPosition().x() << ", "
+          << "T.translation() y = " << T_cur_from_ref_.getPosition().y() << ", "
+          << "T.translation() z = " << T_cur_from_ref_.getPosition().z();
 
   // Triangulate
+  // KRAXEL EDIT
+  // -------------------- parse ref poses from tum file
+  std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+  
+  std::shared_ptr<svo::Transformation> T_last = io::poseFromTumByNsec(traj_file_name, frames_ref_->at(0)->timestamp_, true);
+  std::shared_ptr<svo::Transformation> T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true)   ; // bound timestamps to newer poses only
+
+  // -------------------- swap out essential pose with tum file pose
+  svo::Transformation T_rel;
+    if (T_last && T_new) {
+      T_rel = T_last->inverse() *  *T_new;  // motion from last pose to current pose
+      VLOG(40)  << "Swapped out tum file pose with essential!";
+      VLOG(40) << "Relative motion x is: " << T_rel.getPosition().x(); 
+      VLOG(40) << "Relative motion y is: " << T_rel.getPosition().y(); 
+      VLOG(40) << "Relative motion z is: " << T_rel.getPosition().z(); 
+      T_cur_from_ref_ = T_rel.inverse();  // force ref pose from tum instead of essential pose
+      }
+    else {
+      // KRAXEL EDIT: skip triangulation in case no ref pose is available, otherwise essential pose would be utilized with wrong scale
+      SVO_WARN_STREAM("No ref pose for triangulation. Try with next image!");
+      return InitResult::kTracking;
+      }
+
+  
+  // KRAXEL EDIT: 
+  // -------------------- traingualte with swapped pose and scale forced to 1
   if(initialization_utils::triangulateAndInitializePoints(
         frames_cur->at(0), frames_ref->at(0), T_cur_from_ref_, options_.reproj_error_thresh,
         depth_at_current_frame_, options_.init_min_inliers, matches_cur_ref))
@@ -361,7 +398,7 @@ InitResult FivePointInit::addFrameBundle(
 InitResult OneShotInit::addFrameBundle(const FrameBundlePtr &frames_cur)
 {
   CHECK(frames_cur->size() == 1) << "OneShot Initialization doesn't work with Camera Array";
-
+  VLOG(40) << "One shot init!";
   // Track and detect features.
   trackFeaturesAndCheckDisparity(frames_cur);
 
@@ -746,6 +783,7 @@ bool triangulateAndInitializePoints(
     return false;
   }
 
+  // KRAXEL EDIT: manually force scale to 1 since we have real world scale from ref pose
   // Scale 3D points to given scene depth and initialize Points
   initialization_utils::rescaleAndInitializePoints(
         frame_cur, frame_ref, matches_cur_ref, points_in_cur, T_cur_ref, depth_at_current_frame);
@@ -813,7 +851,9 @@ void rescaleAndInitializePoints(
   }
   CHECK_GT(depth_vec.size(), 1u);
   const double scene_depth_median = vk::getMedian(depth_vec);
-  const double scale = depth_at_current_frame / scene_depth_median;
+  // const double scale = depth_at_current_frame / scene_depth_median;
+  // KRAXEL EDIT: manually force scale to 1 since we have real world scale from ref pose
+  const double scale = 1.0;
 
   // reset pose of current frame to have right scale
   frame_cur->T_f_w_ = T_cur_ref * frame_ref->T_f_w_;

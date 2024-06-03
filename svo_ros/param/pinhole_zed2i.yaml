@@ -42,8 +42,9 @@ kfselect_min_dist_metric: 0.1
 kfselect_min_angle: 20
 # If the median disparity from the last keyframe is smaller,
 # do not take a new keyframe
-# You can lower this value for more keyframes
-kfselect_min_disparity: 40
+# You can lower this value for more keyframes\
+# TODO: forward motion reduce
+kfselect_min_disparity: 16
 # When taking a new keyframe,
 # we can already update the newly initialized seeds with old keyframes.
 # This is important for forward looking case.
@@ -68,7 +69,7 @@ reprojector_affine_est_gain: false
 # For a higher resolution, increase the value accordingly.
 #TODO: increase for resolution
 # ---------- disparity: important to turn down for forward car motion! Otherwise initialization will only work in curves!
-init_min_disparity: 15  # TODO: mark as most important
+init_min_disparity: 12  # TODO: mark as most important
 # ----------
 init_min_features: 50
 automatic_reinitialization: true

@@ -26,7 +26,7 @@
 namespace svo {
 namespace io {
 
-std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp)
+std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp, bool allowTimediff)
 {
     std::shared_ptr<svo::Transformation> refPose = nullptr;
 
@@ -66,14 +66,26 @@ std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFil
               timestamp = static_cast<uint64_t>(stampBoost);
               // VLOG(40) << "TUM Trajectory: Parsed nsec timestamp: " << timestamp;
 
-              uint64_t thresh = 10; //  msec time
-              thresh *= 1e6;  // extend to nsec
+              // time diff threshold
+              uint64_t thresh = 32; //  msec time  // TODO: make parametrizable
+              thresh *= 1e6;  // extend msec to nsec
 
               if (timestamp == nsecRefStamp)
               {
                 skipRow = false;
                 VLOG(40) << "TUM trajectory file parsing: matching timestamp found at: " << timestamp ;
               }
+              // during init we require the ref pose for triangulation so we lax the timestamp matching
+              else if (allowTimediff)
+              {
+                uint64_t timediff = std::max(timestamp, nsecRefStamp) - std::min(timestamp, nsecRefStamp);
+                if (timediff <= thresh )
+                {
+                  skipRow = false;
+                  VLOG(40) << "TUM trajectory file parsing: roughly matching timestamp found with difference of: " << timediff;
+                }
+              }
+              
             }
 
             // parse pose
