@@ -9,6 +9,10 @@
 #include <sstream>
 #include <limits>
 
+#include <boost/multiprecision/cpp_dec_float.hpp>
+#include <boost/multiprecision/cpp_bin_float.hpp>
+#include <boost/multiprecision/float128.hpp>
+
 #include "svo/frame_handler_base.h"
 
 #include <functional>
@@ -54,7 +58,7 @@ inline double distanceFirstTwoKeyframes(svo::Map& map)
   return dist;
 }
 
-std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp, const bool boundLower)
+std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp)
 {
     std::shared_ptr<svo::Transformation> refPose = nullptr;
 
@@ -80,38 +84,29 @@ std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFil
             if (i == 0)
             {
               // parse scientific e9 notation into double 
-              double stampDouble;
-              std::setprecision(15);
+              boost::multiprecision::cpp_dec_float_50 stampBoost;  // high precision
               
               // VLOG(40) << cell;
-              std::istringstream iss(cell);
-              iss.precision(15);
-              iss >> stampDouble;
-              stampDouble *= 1e9;  // convert secs to nsecs
-              // VLOG(40) << std::fixed <<"TUM Trajectory: Parsed double timestamp: " << stampDouble;
+              std::istringstream iss(cell);  // parse string represening the timesamp in seconds e+09
+              iss >> stampBoost;  // forward string to boost double
+              std::setprecision(21);
+              // VLOG(40) << std::setprecision(21) <<"TUM Trajectory: Parsed boost timestamp: " << stampBoost;
 
+              stampBoost *= 1e9;  // convert secs to nsecs
+              
               // convert into nanosecond integer timestamp
-              timestamp = static_cast<uint64_t>(stampDouble);
+              timestamp = static_cast<uint64_t>(stampBoost);
               // VLOG(40) << "TUM Trajectory: Parsed nsec timestamp: " << timestamp;
 
-              uint64_t thresh = 24; //  msec time
+              uint64_t thresh = 10; //  msec time
               thresh *= 1e6;  // extend to nsec
 
-              if (boundLower && timestamp < nsecRefStamp) {
-                // skip row as long as current row timestamp is below ref stamp. this forces new images to not grab past poses 
-                continue;
-              }
-              
-              uint64_t diff = std::max(timestamp , nsecRefStamp) - std::min(timestamp , nsecRefStamp);
-              // skip if not our desired row
-              if ( diff <= thresh)
+              if (timestamp == nsecRefStamp)
               {
                 skipRow = false;
                 VLOG(40) << "TUM trajectory file parsing: matching timestamp found at: " << timestamp ;
-                VLOG(40) << "Matching stamp timediff in msec: " << diff / 1e6 ;
               }
             }
-
 
             // parse pose
             if (i == 1)
@@ -159,7 +154,7 @@ std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFil
 
         return refPose;
     }
-    VLOG(1) << "WARNING: no suitable pose found";
+    LOG(WARNING) << "No suitable pose found in tum file to reference timestamp!";
     data.close();
 
     return refPose;
@@ -471,10 +466,10 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
       VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << nsec_new;
 
       // -------------------- fetch motion from file
-      std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards.tum";
+      std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
       
-      std::shared_ptr<svo::Transformation> T_last = poseFromTumByNsec(traj_file_name, nsec_last, false);
-      std::shared_ptr<svo::Transformation> T_new = poseFromTumByNsec(traj_file_name, nsec_new, true); // bound timestamps to newer poses only
+      std::shared_ptr<svo::Transformation> T_last = poseFromTumByNsec(traj_file_name, nsec_last);
+      std::shared_ptr<svo::Transformation> T_new = poseFromTumByNsec(traj_file_name, nsec_new);
       
       // -------------------- original motion prior setter
       VLOG(40) << "Predict pose of new image using motion prior.";  // NOTE: motion prior is selected here
