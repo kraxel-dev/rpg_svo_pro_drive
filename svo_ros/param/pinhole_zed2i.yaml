@@ -16,7 +16,7 @@ pipeline_is_stereo: False
 # max_fts: 120
 # max_n_kfs: 5
 #TODO:
-max_fts: 180
+max_fts: 120
 max_n_kfs: 9
 
 # Map scale when initialized (not used for stereo)
@@ -93,14 +93,15 @@ reprojector_max_n_kfs: 7 # Local map size. Larger is computationally more intens
 scan_epi_unit_sphere: False # for wide angle lens, set it to True.
 
 # Pose Optimization
-poseoptim_thresh: 2.0 # Reprojection outlier threshold (px), should be larger for larger images.
+# TODO:
+poseoptim_thresh: 3.0 # Reprojection outlier threshold (px), should be larger for larger images.
 poseoptim_using_unit_sphere: False # For wide angle lens, set it to True
 
 # Depth Filter
 # How many times does the covariance need to decrease until a seed is considered converged.
 # Increase to get more accurate points
 # TODO:
-seed_convergence_sigma2_thresh: 10
+seed_convergence_sigma2_thresh: 250
 
 # IMU
 # Normally the prior should be 0 if not using IMU.

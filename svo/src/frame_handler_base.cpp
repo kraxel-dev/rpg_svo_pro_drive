@@ -387,7 +387,6 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
         std::cout << T_rel.getPosition().y()  << std::endl; 
         std::cout << T_rel.getPosition().z()  << std::endl; 
 
-
         // -------------------- force hardcoded motion prior 
         T_newimu_lastimu_prior_ = T_rel.inverse();
         have_motion_prior_ = true;

@@ -360,7 +360,7 @@ InitResult FivePointInit::addFrameBundle(
   std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
   
   std::shared_ptr<svo::Transformation> T_last = io::poseFromTumByNsec(traj_file_name, frames_ref_->at(0)->timestamp_, true);
-  std::shared_ptr<svo::Transformation> T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true)   ; // bound timestamps to newer poses only
+  std::shared_ptr<svo::Transformation> T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
 
   // -------------------- swap out essential pose with tum file pose
   svo::Transformation T_rel;

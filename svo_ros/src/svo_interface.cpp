@@ -333,6 +333,7 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
   cv::Mat image;
   try
   {
+    // KRAXEL EDIT: auto convert to grayscale
     image = cv_bridge::toCvCopy(msg, "mono8")->image;
   }
   catch (cv_bridge::Exception& e)
