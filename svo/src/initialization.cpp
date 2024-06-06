@@ -341,9 +341,10 @@ InitResult FivePointInit::addFrameBundle(
 
   Eigen::Vector3d t = ransac.model_coefficients_.rightCols(1);
   Matrix3d R = ransac.model_coefficients_.leftCols(3);
-  T_cur_from_ref_ = Transformation(
+  Transformation T_cur_from_ref_essential = Transformation(
         Quaternion(R),
-        ransac.model_coefficients_.rightCols(1));
+        ransac.model_coefficients_.rightCols(1));  // Motion decomposed from essential matrx
+  T_cur_from_ref_ = T_cur_from_ref_essential;
 
   VLOG(5) << "5Pt RANSAC:" << std::endl
           << "# Iter = " << ransac.iterations_ << std::endl
@@ -356,11 +357,23 @@ InitResult FivePointInit::addFrameBundle(
 
   // Triangulate
   // KRAXEL EDIT
-  // -------------------- parse ref poses from tum file
-  std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+  // -------------------- fetch motion prior from either wheel odom or tum file
+  std::shared_ptr<svo::Transformation> T_last = nullptr;
+  std::shared_ptr<svo::Transformation> T_new = nullptr;
+  bool priorFromWheelodom = true;
+  if (priorFromWheelodom) // -------------------- fetch motion from absolute wheel odom camposes
+  {
+    T_last = frames_ref_->at(0)->T_world_baselink_as_cam_;
+    T_new = frames_cur->at(0)->T_world_baselink_as_cam_;
+  }
   
-  std::shared_ptr<svo::Transformation> T_last = io::poseFromTumByNsec(traj_file_name, frames_ref_->at(0)->timestamp_, true);
-  std::shared_ptr<svo::Transformation> T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
+  else { // -------------------- fetch motion from tum file
+    std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+    T_last = io::poseFromTumByNsec(traj_file_name, frames_ref_->at(0)->timestamp_, true);
+    T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
+  } // TODO: else option to not use motion prior from hacked sources
+      
+  
 
   // -------------------- swap out essential pose with tum file pose
   svo::Transformation T_rel;
@@ -371,6 +384,7 @@ InitResult FivePointInit::addFrameBundle(
       VLOG(40) << "Relative motion y is: " << T_rel.getPosition().y(); 
       VLOG(40) << "Relative motion z is: " << T_rel.getPosition().z(); 
       T_cur_from_ref_ = T_rel.inverse();  // force ref pose from tum instead of essential pose
+      T_cur_from_ref_.getRotationMatrix() = T_cur_from_ref_essential.getRotationMatrix();  // trust rotation from essential decomposition instead of wheel odom
       }
     else {
       // KRAXEL EDIT: skip triangulation in case no ref pose is available, otherwise essential pose would be utilized with wrong scale

@@ -50,6 +50,7 @@ SvoInterface::SvoInterface(
     const ros::NodeHandle& private_nh)
   : nh_(nh)
   , pnh_(private_nh)
+  , tfl_(tfb_)
   , pipeline_type_(pipeline_type)
   , set_initial_attitude_from_gravity_(
       vk::param<bool>(pnh_, "set_initial_attitude_from_gravity", true))
@@ -341,6 +342,7 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
     ROS_ERROR("cv_bridge exception: %s", e.what());
   }
 
+  VLOG(40) << "Mono callback triggered!";
   std::vector<cv::Mat> images;
   images.push_back(image.clone());
 
@@ -352,6 +354,49 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
 
   imageCallbackPreprocessing(msg->header.stamp.toNSec());
 
+  // KRAXEL EDIT:
+  // -------------------- define frame names hardcoded TODO: make parametrizable
+  std::string child_frame = "base_link";  // wheel odom frame
+  std::string parent_frame = "world";  // static world frame in which wheel odom is expressed
+
+  // -------------------- fetch wheel odom tf
+  geometry_msgs::TransformStamped::ConstPtr fetchedTfPtr = nullptr; // pointer to fetched eigen pose of tf. Stays nullptr if tf fetching failed
+  try
+  {
+      // get tf for desired timestamp. block and wait for specified amount of secs if desired tf not yet available
+      // const geometry_msgs::TransformStamped fetchedTf = tfb_.lookupTransform(parent_frame, child_frame, msg->header.stamp);
+      const geometry_msgs::TransformStamped fetchedTf = tfb_.lookupTransform(parent_frame, child_frame, ros::Time(0));
+      // convert to pointer
+      fetchedTfPtr = boost::make_shared<geometry_msgs::TransformStamped>(fetchedTf);
+      SVO_INFO_STREAM("Retrieved absolute wheel odom pose as tf!");
+  }
+  catch (const std::exception &e)
+  {
+      SVO_WARN_STREAM(e.what());
+      SVO_WARN_STREAM("Failed to catch tf pose of " << child_frame << " in " << parent_frame);
+      fetchedTfPtr = nullptr;
+      
+      // -------------------- Break execution if wheel odom is mandatory
+      SVO_ERROR_STREAM("Skipping image due to missing wheel odom pose!");
+      return;
+  }
+  // -------------------- store absolute wheel odom pose for later use
+  curr_wheelodom_tf_ = fetchedTfPtr;
+  if (curr_wheelodom_tf_)
+  {
+    // convert tf to Eigen::pose
+    Eigen::Affine3d poseEigen = tf2::transformToEigen(*curr_wheelodom_tf_);
+    Transformation curr_wheelodom_pose(poseEigen.matrix());
+
+    // pass down wheel odom pose to svo instance
+    svo_->T_world_wheelodom_ = std::make_shared<Transformation>(curr_wheelodom_pose);
+  }
+  else {
+    svo_->T_world_wheelodom_ = nullptr;
+  }
+  
+
+  // -------------------- regular processing
   processImageBundle(images, msg->header.stamp.toNSec());
 
 

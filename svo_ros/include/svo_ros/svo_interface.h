@@ -3,9 +3,15 @@
 #include <thread>
 
 #include <ros/ros.h>
-#include <std_msgs/String.h>    // user-input
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/Imu.h>
+#include <std_msgs/String.h>    // user-input
+
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <eigen_conversions/eigen_msg.h>
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
 
 
 #include <svo/common/types.h>
@@ -36,11 +42,17 @@ public:
   // ROS subscription and publishing.
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
+  // KRAXEL EDIT: For fetching wheel odom tfs
+  tf2_ros::Buffer tfb_;  // tf buffer
+  tf2_ros::TransformListener tfl_;
+  geometry_msgs::TransformStamped::ConstPtr curr_wheelodom_tf_ = nullptr;  // ptr to absolute wheel odom pose with respect to some static odom frame
+
   PipelineType pipeline_type_;
   ros::Subscriber sub_remote_key_;
   std::string remote_input_;
   std::unique_ptr<std::thread> imu_thread_;
   std::unique_ptr<std::thread> image_thread_;
+
 
   // SVO modules.
   std::shared_ptr<FrameHandlerBase> svo_;

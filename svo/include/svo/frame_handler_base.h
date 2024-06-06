@@ -404,6 +404,10 @@ public:
   /// Initial orientation
   Transformation T_world_imuinit;
 
+  // KRAXEL EDIT: 
+  // TODO: make private
+  std::shared_ptr<Transformation> T_world_wheelodom_ = nullptr;  // current absolute pose of wheel odometry in world
+
   // SVO Modules
   SparseImgAlignBasePtr sparse_img_align_;
   std::vector<ReprojectorPtr> reprojectors_;

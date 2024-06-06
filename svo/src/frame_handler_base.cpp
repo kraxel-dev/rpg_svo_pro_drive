@@ -202,6 +202,18 @@ bool FrameHandlerBase::addImageBundle(const std::vector<cv::Mat>& imgs, const ui
   {
     SVO_STOP_TIMER("pyramid_creation");
   }
+
+  // KRAXEL EDIT:
+  // -------------------- assign wheel odom pose to frame
+  if (T_world_wheelodom_)  // if ptr exists
+  {
+    for (auto &&frame : frames)
+    {
+      // absolute wheel odom pose to frame with automatic transformation to campose too
+      frame->set_T_world_baselink(*T_world_wheelodom_);
+    }
+  }
+
   // Process frame bundle.
   return addFrameBundle(frame_bundle);
 }
@@ -359,23 +371,34 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     {
 
       // KRAXEL EDIT:
+      bool priorFromWheelodom = true;  // TODO: make enum and parametrizable
       // -------------------- retrieve timestamps
       uint64_t nsec_last = last_frames_->at(0).get()->timestamp_;  // nsec timestamp of last used image
       uint64_t nsec_new = frame_bundle->at(0)->timestamp_;  // nsec timestamp of currently processed image
       VLOG(40) << "LAST IMAGE TIMESTAMP: " << nsec_last;
       VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << nsec_new;
 
-      // -------------------- fetch motion from file
-      std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+      // -------------------- fetch motion prior from either wheel odom or tum file
+      std::shared_ptr<svo::Transformation> T_last = nullptr;
+      std::shared_ptr<svo::Transformation> T_new = nullptr;
+      if (priorFromWheelodom) // -------------------- fetch motion from absolute wheel odom camposes
+      {
+        T_last = last_frames_->at(0).get()->T_world_baselink_as_cam_;
+        T_new = new_frames_->at(0)->T_world_baselink_as_cam_;
+      }
       
-      std::shared_ptr<svo::Transformation> T_last = io::poseFromTumByNsec(traj_file_name, nsec_last);
-      std::shared_ptr<svo::Transformation> T_new = io::poseFromTumByNsec(traj_file_name, nsec_new);
+      else { // -------------------- fetch motion from file
+        std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+        T_last = io::poseFromTumByNsec(traj_file_name, nsec_last);
+        T_new = io::poseFromTumByNsec(traj_file_name, nsec_new);
+      } // TODO: else option to not use motion prior from hacked sources
+      
       
       // -------------------- original motion prior setter
       VLOG(40) << "Predict pose of new image using motion prior.";  // NOTE: motion prior is selected here
       getMotionPrior(false);
       
-      // -------------------- get relative motion between tum file poses
+      // -------------------- get relative motion absolute cam poses
       svo::Transformation T_rel;
       if (T_last && T_new) {
         svo::Transformation T_new_deref = *T_new;

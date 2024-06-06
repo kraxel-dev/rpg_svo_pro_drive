@@ -56,6 +56,13 @@ public:
   Transformation T_body_cam_;
   Transformation T_cam_body_;
 
+  // KRAXEL EDIT:
+  // Absolute wheel odometry poses with respect to some static frame
+  std::shared_ptr<Transformation> T_world_baselink_ = nullptr;  // absolute wheel odom pose
+  std::shared_ptr<Transformation> T_world_baselink_as_cam_ = nullptr;  // wheel odom pose expressed as camPose via extrinsic calibration
+  // TODO: make parametrizable
+  std::shared_ptr<Transformation> T_baselink_cam_ = nullptr;  // pose of camera as seen from baselink. Use as extrinisc calib between wheelbase and camera
+
   // Features
   // All vectors must have the same length/cols at all time!
   // {
@@ -273,6 +280,26 @@ public:
     T_body_cam_ = T_cam_imu.inverse();
   }
 
+  // KRAXEL EDIT:
+  /**
+   * @brief Assign pose of current baselink to some world frame for this image. Assigned baselink pose should be time-corresponding to this image.
+   * 
+   * Automatically fills baselink expressed as campose, if extrinsics between wheelbase and cam is available.
+   * @param T_world_baselink Absolute pose of baselink to some static world frame
+   */
+  void set_T_world_baselink(const Transformation& T_world_baselink) {
+    T_world_baselink_ = std::make_shared<Transformation>(T_world_baselink);
+
+    // -------------------- express baselink pose as camPose through right transform with extrinsics
+    // hardcode extrinisc TODO: swtich extrinsic to member var and make parametrizable
+
+    Eigen::Quaterniond quat(0.547, -0.448, 0.448, -0.547);
+    Transformation T_baselink_cam(kindr::minimal::Position(1.58, 0.0, 1.566), kindr::minimal::RotationQuaternion(quat.normalized()));
+    // right transform to express baselink pose as campose
+    T_world_baselink_as_cam_ = std::make_shared<Transformation>(T_world_baselink * T_baselink_cam);   
+  }
+
+
   /// set new pose
   /// If setting T_f_w_ is desired, one should access T_f_w_ directly.
   inline void set_T_w_imu(const Transformation& T_w_imu)
@@ -479,7 +506,8 @@ public:
     for(const FramePtr& frame : frames_)
       frame->T_f_w_ = (T_W_B*frame->T_body_cam_).inverse();
   }
-
+  
+ 
   inline void setIMUState(const Eigen::Vector3d& imu_vel_w,
                           const Eigen::Vector3d& gyr_bias,
                           const Eigen::Vector3d& acc_bias)

@@ -8,6 +8,15 @@
     ```
     roslaunch svo_ros run_from_bag_zed2i.launch cam_name:=zed2i_left_rectified
     ```
+1. Play bag
+    ```
+    # should contain absolute wheel odom poses to get the motion prior running
+    rosbag play backwards_2_converted.bag -s 10 --clock -r 0.4 --pause
+    ```
+1. Run dynamic tf completer to provide dynamic tfs to the wheel odom poses
+    ```
+    rosrun ros_helper dynamic_tf_completer.py
+    ```
 # Original Readme
 # rpg_svo_pro
 
