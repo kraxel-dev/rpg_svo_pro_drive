@@ -152,6 +152,7 @@ bool saveMap(
       << YAML::Key << "frames" << YAML::Value
       << YAML::BeginSeq;
 
+  VLOG(40) << "Begin with frames for save to map";
   // safe frames
   for(const auto& keyval : map->keyframes_)
   {
@@ -174,34 +175,52 @@ bool saveMap(
       << YAML::Key << "features" << YAML::Value
       << YAML::BeginSeq;
 
+  // KRAXEL EDIT
+  VLOG(40) << "Begin with points to save for map!";
   // safe features
-  CHECK(false) << "fix implementation.";
+  CHECK(true) << "fix implementation.";
   std::unordered_set<PointPtr> points;
-  /*
+  
   for(const auto& keyval : map->keyframes_)
   {
-    for(const FeaturePtr& ftr : keyval.second->fts_)
+    int num_ft_pts = keyval.second->px_vec_.cols();
+    VLOG(40) << "Number of feature points for this image: " << num_ft_pts;
+    // for(const FramePtr& ftr : keyval.second->px_vec_)
+    for (int i = 0; i < num_ft_pts ; i++)
     {
-      if(ftr->point->type() == Point::TYPE_CORNER_SEED
-         || ftr->point->type() == Point::TYPE_EDGELET_SEED )
+      VLOG(40) << "point: " << i;
+      if(isConvergedCornerEdgeletSeed(keyval.second->type_vec_.at(i)) || isCornerEdgeletSeed(keyval.second->type_vec_.at(i)) || isUnconvergedCornerEdgeletSeed(keyval.second->type_vec_.at(i)) 
+          || isSeed(keyval.second->type_vec_.at(i)) || isMapPointSeed(keyval.second->type_vec_.at(i)) || isUnconvergedMapPointSeed(keyval.second->type_vec_.at(i))
+          || isUnconvergedSeed(keyval.second->type_vec_.at(i))
+          )
+      // if(keyval.second->type_vec_.at(i).  == Point::TYPE_CORNER_SEED
+      //    || keyval.second->point->type() == Point::TYPE_EDGELET_SEED )
       {
+        VLOG(40) << "Skipping due to seed!";
+        continue;
+      }
+
+        if (!keyval.second->landmark_vec_.at(i))
+        {
+          SVO_WARN_STREAM("Landmark is nullptr!");
         continue;
       }
 
       out << YAML::BeginMap
           << YAML::Key << "frame_id" << YAML::Value << keyval.second->id()
-          << YAML::Key << "point_id" << YAML::Value << ftr->point->id()
+          << YAML::Key << "point_id" << YAML::Value << keyval.second->landmark_vec_.at(i)->id()
           << YAML::Key << "px" << YAML::Value << YAML::Flow
           << YAML::BeginSeq
-            << ftr->px[0]
-            << ftr->px[1]
+            << keyval.second->px_vec_.col(i).x()
+            << keyval.second->px_vec_.col(i).y()
           << YAML::EndSeq
-          << YAML::Key << "level" << YAML::Value << ftr->level
+          << YAML::Key << "level" << YAML::Value << keyval.second->level_vec_.row(i)(0,0)
           << YAML::EndMap;
-      points.insert(ftr->point);
+      points.insert(keyval.second->landmark_vec_.at(i));
+      
     }
   }
-  */
+  VLOG(40) << "Done writing 2d pxl points of keyframe!";
 
   out << YAML::EndSeq
       << YAML::Key << "points" << YAML::Value
@@ -220,6 +239,7 @@ bool saveMap(
         << YAML::EndSeq
         << YAML::EndMap;
   }
+  VLOG(40) << "Done writing 3d landmark points of keyframe!";
 
   out << YAML::EndSeq;
 
