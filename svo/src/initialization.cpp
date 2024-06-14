@@ -363,18 +363,17 @@ InitResult FivePointInit::addFrameBundle(
   bool priorFromWheelodom = true;
   if (priorFromWheelodom) // -------------------- fetch motion from absolute wheel odom camposes
   {
-    T_last = frames_ref_->at(0)->T_world_baselink_as_cam_;
+    T_last = frames_ref->at(0)->T_world_baselink_as_cam_;
     T_new = frames_cur->at(0)->T_world_baselink_as_cam_;
   }
   
   else { // -------------------- fetch motion from tum file
     std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
-    T_last = io::poseFromTumByNsec(traj_file_name, frames_ref_->at(0)->timestamp_, true);
+    T_last = io::poseFromTumByNsec(traj_file_name, frames_ref->at(0)->timestamp_, true);
     T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
   } // TODO: else option to not use motion prior from hacked sources
       
   
-
   // -------------------- swap out essential pose with tum file pose
   svo::Transformation T_rel;
     if (T_last && T_new) {

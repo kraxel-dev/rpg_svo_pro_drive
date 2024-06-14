@@ -364,8 +364,8 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
   try
   {
       // get tf for desired timestamp. block and wait for specified amount of secs if desired tf not yet available
-      // const geometry_msgs::TransformStamped fetchedTf = tfb_.lookupTransform(parent_frame, child_frame, msg->header.stamp);
-      const geometry_msgs::TransformStamped fetchedTf = tfb_.lookupTransform(parent_frame, child_frame, ros::Time(0));
+      const geometry_msgs::TransformStamped fetchedTf = tfb_.lookupTransform(parent_frame, child_frame, msg->header.stamp, ros::Duration(0.03));
+      
       // convert to pointer
       fetchedTfPtr = boost::make_shared<geometry_msgs::TransformStamped>(fetchedTf);
       SVO_INFO_STREAM("Retrieved absolute wheel odom pose as tf!");
@@ -376,9 +376,19 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
       SVO_WARN_STREAM("Failed to catch tf pose of " << child_frame << " in " << parent_frame);
       fetchedTfPtr = nullptr;
       
-      // -------------------- Break execution if wheel odom is mandatory
-      SVO_ERROR_STREAM("Skipping image due to missing wheel odom pose!");
-      return;
+      // -------------------- Break execution if wheel odom is mandatory for init
+      if (svo_->stage() != Stage::kTracking && svo_->stage() != Stage::kRelocalization ) {
+        if (!svo_->last_frames_)
+        {
+          SVO_ERROR_STREAM("Skipping image for as very first init reference frame due to missing wheel odom pose!");
+        }
+        else
+        {
+          SVO_ERROR_STREAM("Skipping image for triangulation due to missing wheel odom pose!");
+        }
+        
+        return;
+      }
   }
   // -------------------- store absolute wheel odom pose for later use
   curr_wheelodom_tf_ = fetchedTfPtr;

@@ -203,17 +203,6 @@ bool FrameHandlerBase::addImageBundle(const std::vector<cv::Mat>& imgs, const ui
     SVO_STOP_TIMER("pyramid_creation");
   }
 
-  // KRAXEL EDIT:
-  // -------------------- assign wheel odom pose to frame
-  if (T_world_wheelodom_)  // if ptr exists
-  {
-    for (auto &&frame : frames)
-    {
-      // absolute wheel odom pose to frame with automatic transformation to campose too
-      frame->set_T_world_baselink(*T_world_wheelodom_);
-    }
-  }
-
   // Process frame bundle.
   return addFrameBundle(frame_bundle);
 }
@@ -230,6 +219,8 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
   if (set_start_)
   {
     // Temporary copy rotation prior. TODO(cfo): fix this.
+    VLOG(40) << "Resetting to start conditions!";  
+    
     Quaternion R_imu_world = R_imu_world_;
     bool have_rotation_prior = have_rotation_prior_;
     resetAll();
@@ -237,6 +228,18 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     have_rotation_prior_ = have_rotation_prior;
     setInitialPose(frame_bundle);
     stage_ = Stage::kInitializing;
+  }
+
+  // KRAXEL EDIT: NOTE: this pose assignment is embedded so deeply so that the above set_start_ reset does not delete the pose of the ref image during init
+  // -------------------- assign wheel odom pose to frame
+  if (T_world_wheelodom_)  // if ptr exists
+  {
+    for (auto &&frame : *frame_bundle)
+    {
+      // absolute wheel odom pose to frame with automatic transformation to campose too
+      VLOG(40) << "Passing absolute wheel odom pose to frame!";
+      frame->set_T_world_baselink(*T_world_wheelodom_);
+    }
   }
 
   if (stage_ == Stage::kPaused)
@@ -698,8 +701,8 @@ size_t FrameHandlerBase::sparseImageAlignment()
     double prior_trans = options_.img_align_prior_lambda_trans;
     double prior_rot = options_.img_align_prior_lambda_rot;
     
-    prior_trans = 0.2;
-    prior_rot = 0.2;
+    prior_trans = 0.3;
+    prior_rot = 0.1;
 
     if (map_->size() < 5) {
       VLOG(40) << "Bootstrapping Map. no motion prior wanted";
