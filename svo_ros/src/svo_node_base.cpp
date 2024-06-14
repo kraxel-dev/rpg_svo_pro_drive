@@ -1,3 +1,4 @@
+#include "svo/io.h"
 #include "svo_ros/svo_node_base.h"
 
 #include <gflags/gflags.h>
@@ -37,10 +38,24 @@ SvoNodeBase::SvoNodeBase()
 
 void SvoNodeBase::run()
 {
-  ros::spin();
+  // KRAXEL EDIT
+  // ros::spin();
+  while (ros::ok())
+  {
+    ros::spinOnce();
+    if (svo_interface_.saveMapNow_)
+    {
+      svo_interface_.saveMapIo();
+    }
+  }
+
+
+  // svo_interface_.saveMapIo();
+  
   SVO_INFO_STREAM("SVO quit");
   svo_interface_.quit_ = true;
   SVO_INFO_STREAM("SVO terminated.\n");
 }
+
 
 }  // namespace svo_ros

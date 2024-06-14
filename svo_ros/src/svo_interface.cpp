@@ -6,6 +6,7 @@
 #include <svo_ros/visualizer.h>
 #include <svo/common/frame.h>
 #include <svo/map.h>
+#include <svo/io.h>
 #include <svo/imu_handler.h>
 #include <svo/common/camera.h>
 #include <svo/common/conversions.h>
@@ -40,6 +41,7 @@
 
 #ifdef SVO_GLOBAL_MAP
 #include <svo/global_map.h>
+#include "svo_interface.h"
 #endif
 
 namespace svo {
@@ -137,11 +139,14 @@ SvoInterface::SvoInterface(
 
 SvoInterface::~SvoInterface()
 {
+
   if (imu_thread_)
     imu_thread_->join();
   if (image_thread_)
     image_thread_->join();
   VLOG(1) << "Destructed SVO.";
+ 
+  
 }
 
 void SvoInterface::processImageBundle(
@@ -275,6 +280,18 @@ void SvoInterface::publishResults(
     }
   }
 #endif
+}
+
+void SvoInterface::saveMapIo()
+{
+  saveMapNow_ = false;
+  VLOG(1) << "Trying to save vslam map created during runtime! ...";
+  const std::shared_ptr<svo::Map> generatedMap = svo_->map();
+  if (generatedMap)
+  {
+    io::saveMap(generatedMap, "/home/azuo/eval/eval_traj_colmap_proposal_meeting/evo_traj/backwards_batch_evo", "map_backwards_reloc.yaml");
+    VLOG(1) << "Map saved succesfully!";
+  }
 }
 
 bool SvoInterface::setImuPrior(const int64_t timestamp_nanoseconds)
@@ -474,9 +491,13 @@ void SvoInterface::inputKeyCallback(const std_msgs::StringConstPtr& key_input)
       SVO_INFO_STREAM("SVO user input: QUIT");
       break;
     case 'r':
+      // KRAXEL EDIT
+      saveMapNow_ = true;
+
       svo_->reset();
       idle_ = true;
       SVO_INFO_STREAM("SVO user input: RESET");
+      
       break;
     case 's':
       svo_->start();

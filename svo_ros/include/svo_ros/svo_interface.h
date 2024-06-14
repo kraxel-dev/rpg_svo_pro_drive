@@ -89,6 +89,9 @@ public:
       const std::vector<cv::Mat>& images,
       const int64_t timestamp_nanoseconds);
 
+  bool saveMapNow_ = false;
+  void saveMapIo();
+
   // Subscription and callbacks
   void monoCallback(const sensor_msgs::ImageConstPtr& msg);
   void stereoCallback(
