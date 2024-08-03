@@ -355,9 +355,9 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
   imageCallbackPreprocessing(msg->header.stamp.toNSec());
 
   // KRAXEL EDIT:
-  // -------------------- define frame names hardcoded TODO: make parametrizable
-  std::string child_frame = "base_link";  // wheel odom frame
-  std::string parent_frame = "world";  // static world frame in which wheel odom is expressed
+  // -------------------- define tf frame names TODO: more graceful way to access these params
+  std::string child_frame = svo_->options_.motion_prior_tf_body_frame;  // wheel odom frame
+  std::string parent_frame = svo_->options_.motion_prior_tf_source_frame;  // static world frame in which wheel odom is expressed
 
   // -------------------- fetch wheel odom tf
   geometry_msgs::TransformStamped::ConstPtr fetchedTfPtr = nullptr; // pointer to fetched eigen pose of tf. Stays nullptr if tf fetching failed
@@ -378,12 +378,10 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
       
       // -------------------- Break execution if wheel odom is mandatory for init
       if (svo_->stage() != Stage::kTracking && svo_->stage() != Stage::kRelocalization ) {
-        if (!svo_->last_frames_)
-        {
+        if (!svo_->last_frames_) {
           SVO_ERROR_STREAM("Skipping image for as very first init reference frame due to missing wheel odom pose!");
-        }
-        else
-        {
+        } 
+        else {
           SVO_ERROR_STREAM("Skipping image for triangulation due to missing wheel odom pose!");
         }
         

@@ -697,12 +697,9 @@ size_t FrameHandlerBase::sparseImageAlignment()
     VLOG(40) << "Apply IMU Prior to Image align";
 
     // KRAXEL EDIT
-    // -------------------- force weights for considereing motion prior
+    // -------------------- force weights for considereing motion prior from tf
     double prior_trans = options_.img_align_prior_lambda_trans;
     double prior_rot = options_.img_align_prior_lambda_rot;
-    
-    prior_trans = 0.3;
-    prior_rot = 0.1;
 
     if (map_->size() < 5) {
       VLOG(40) << "Bootstrapping Map. no motion prior wanted";

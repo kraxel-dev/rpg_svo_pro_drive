@@ -77,6 +77,13 @@ BaseOptions loadBaseOptions(const ros::NodeHandle& pnh, bool forward_default)
       vk::param<double>(pnh, "backend_scale_stable_thresh", 0.02);
   o.global_map_lc_timeout_sec_ =
       vk::param<double>(pnh, "global_map_timeout_sec", 2.0);
+
+  // KRAXEL EDIT
+  // Motion Prior from tf options
+  o.use_motion_prior_from_tf = vk::param<bool>(pnh, "use_motion_prior_from_tf", false);
+  o.motion_prior_tf_body_frame = vk::param<std::string>(pnh, "motion_prior_tf_body_frame", "base_link");
+  o.motion_prior_tf_source_frame = vk::param<std::string>(pnh, "motion_prior_tf_source_frame", "odom");
+  o.camera_lense_tf_frame = vk::param<std::string>(pnh, "camera_lense_tf_frame", "zed2i_left_camera_optical_frame");
   return o;
 }
 
