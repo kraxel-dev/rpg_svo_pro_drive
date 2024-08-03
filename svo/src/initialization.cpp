@@ -363,8 +363,8 @@ InitResult FivePointInit::addFrameBundle(
   bool priorFromWheelodom = true;
   if (priorFromWheelodom) // -------------------- fetch motion from absolute wheel odom camposes
   {
-    T_last = frames_ref->at(0)->T_world_baselink_as_cam_;
-    T_new = frames_cur->at(0)->T_world_baselink_as_cam_;
+    T_last = frames_ref->at(0)->T_world_odomsensor_as_cam_;
+    T_new = frames_cur->at(0)->T_world_odomsensor_as_cam_;
   }
   
   else { // -------------------- fetch motion from tum file

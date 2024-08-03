@@ -103,11 +103,16 @@ public:
   virtual void imageCallbackPreprocessing(int64_t timestamp_nanoseconds) {}
   virtual void imageCallbackPostprocessing() {}
 
+  // Call below odometry prior functions only when motion prior from tf is toggled
+
   /// @brief Get the current absolute pose of your additional odometry sensor from the tf tree and pass it down to the svo instance to 
   /// be used as motion prior further down the line.
-  void fetchPoseFromOdometryPrior(const ros::Time &msg_stamp);
-  
-  /// @brief Call only after calling fetchPoseFromOdometryPrior(). Returns false if we are still initializing the front-end and odometry prior pose could not be
+  void preparePoseFromOdometryPrior(const ros::Time &msg_stamp);
+  /// @brief Fetch the extrinsic calibration of the odometry prior sensor to the camera lense (For example: wheelbase to lense) from the 
+  /// ros tf tree and pass it down as as transformation to be used by the svo instance. 
+  /// The extrinsics must be manually provided beforehand as ros tf either in a launch file or from bag data.
+  void prepareExtrinsicsOdometrySensorToCam(const ros::Time &msg_stamp);
+  /// @brief Call only after calling preparePoseFromOdometryPrior(). Returns false if we are still initializing the front-end and odometry prior pose could not be
   /// fetched for current image.
   bool checkOdometryPriorInitCondition();
 

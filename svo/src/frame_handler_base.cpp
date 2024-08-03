@@ -230,15 +230,18 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     stage_ = Stage::kInitializing;
   }
 
-  // KRAXEL EDIT: NOTE: this pose assignment is embedded so deeply so that the above set_start_ reset does not delete the pose of the ref image during init
-  // -------------------- assign wheel odom pose to frame
-  if (T_world_odometry_prior_)  // if ptr exists
+  // NOTE: this pose assignment is embedded so deeply so that the above set_start_ reset does not delete the pose of the ref image during init
+  // -------------------- Assign absolute odometry prior pose to current frame
+  if (T_world_odomsensor_ && T_odomsensor_cam_)  // if ptr to pose exists is decided upstream
   {
     for (auto &&frame : *frame_bundle)
     {
-      // absolute wheel odom pose to frame with automatic transformation to campose too
-      VLOG(40) << "Passing absolute wheel odom pose to frame!";
-      frame->set_T_world_baselink(*T_world_odometry_prior_);
+      // -------------------- Transform absolute odometry pose to be expressed as absolute camera pose
+      VLOG(40) << "Passing absolute pose from odometry prior to current frame!";
+      // right transform with extrinsic to express odometry pose as camera pose
+      Transformation T_world_odomsensor_as_cam = *T_world_odomsensor_ * *T_odomsensor_cam_ ;  // absolute odometry pose expressed as camera pose
+
+      frame->set_T_world_odomsensor_as_cam(T_world_odomsensor_as_cam);
     }
   }
 
@@ -372,7 +375,7 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     // TODO(cfo): remove same from processFrame in mono.
     if (last_frames_)
     {
-
+      
       // KRAXEL EDIT:
       bool priorFromWheelodom = true;  // TODO: make enum and parametrizable
       // -------------------- retrieve timestamps
@@ -386,8 +389,8 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
       std::shared_ptr<svo::Transformation> T_new = nullptr;
       if (options_.use_motion_prior_from_tf) // -------------------- fetch motion from absolute wheel odom camposes
       {
-        T_last = last_frames_->at(0).get()->T_world_baselink_as_cam_;
-        T_new = new_frames_->at(0)->T_world_baselink_as_cam_;
+        T_last = last_frames_->at(0).get()->T_world_odomsensor_as_cam_;
+        T_new = new_frames_->at(0)->T_world_odomsensor_as_cam_;
       }
       
       else { // -------------------- fetch motion from file

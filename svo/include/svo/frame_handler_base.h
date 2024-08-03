@@ -418,8 +418,11 @@ public:
   Transformation T_world_imuinit;
 
   // KRAXEL EDIT: 
-  // TODO: make private
-  std::shared_ptr<Transformation> T_world_odometry_prior_ = nullptr;  // Current absolute pose from your additional odometry sensor with respect to some static odom frame. Will be used to calc motion prior for the visual frontend.
+  // Only used if motion prior from tf is toggled
+  /// Current absolute pose from your additional odometry sensor (wheel encoder, radar) with respect to some static odom frame. Will be used to calc motion prior for the visual frontend.
+  std::shared_ptr<Transformation> T_world_odomsensor_ = nullptr;  // TODO: make private
+  /// Pose of camera frame expressed in body frame of the additional odometry source (wheel encoder, radar) representing the extrinsic calibration between both sensors.
+  std::shared_ptr<Transformation> T_odomsensor_cam_ = nullptr;  // TODO: make private
 
   // SVO Modules
   SparseImgAlignBasePtr sparse_img_align_;

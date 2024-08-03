@@ -57,11 +57,10 @@ public:
   Transformation T_cam_body_;
 
   // KRAXEL EDIT:
-  // Absolute wheel odometry poses with respect to some static frame
-  std::shared_ptr<Transformation> T_world_baselink_ = nullptr;  // absolute wheel odom pose
-  std::shared_ptr<Transformation> T_world_baselink_as_cam_ = nullptr;  // wheel odom pose expressed as camPose via extrinsic calibration
-  // TODO: make parametrizable
-  std::shared_ptr<Transformation> T_baselink_cam_ = nullptr;  // pose of camera as seen from baselink. Use as extrinisc calib between wheelbase and camera
+  // Absolute poses of external odometry sensor with respect to some static world frame
+  std::shared_ptr<Transformation> T_world_odomsensor_ = nullptr; 
+  // Absolute odometry sensor pose expressed as camPose via extrinsic calibration
+  std::shared_ptr<Transformation> T_world_odomsensor_as_cam_ = nullptr;  
 
   // Features
   // All vectors must have the same length/cols at all time!
@@ -281,23 +280,11 @@ public:
   }
 
   // KRAXEL EDIT:
-  /**
-   * @brief Assign pose of current baselink to some world frame for this image. Assigned baselink pose should be time-corresponding to this image.
-   * 
-   * Automatically fills baselink expressed as campose, if extrinsics between wheelbase and cam is available.
-   * @param T_world_baselink Absolute pose of baselink to some static world frame
-   */
-  void set_T_world_baselink(const Transformation& T_world_baselink) {
-    T_world_baselink_ = std::make_shared<Transformation>(T_world_baselink);
-
-    // -------------------- express baselink pose as camPose through right transform with extrinsics
-    // hardcode extrinisc TODO: swtich extrinsic to member var and make parametrizable
-
-    // Eigen::Quaterniond quat(0.547, -0.448, 0.448, -0.547); // original extrinsic
-    Eigen::Quaterniond quat(0.538, -0.458, 0.458, -0.538);  // calibrated with colmap
-    Transformation T_baselink_cam(kindr::minimal::Position(1.58, 0.0, 1.566), kindr::minimal::RotationQuaternion(quat.normalized()));
-    // right transform to express baselink pose as campose
-    T_world_baselink_as_cam_ = std::make_shared<Transformation>(T_world_baselink * T_baselink_cam);   
+  /// @brief Assign current pose of external odometry sensor expressed as camera pose with respect to some static world frame to this image. 
+  /// Assigned pose should be time-corresponding to this image. Conversion from odometry sensor to cam pose must happen with extrinsic calibration data beforehand
+  void set_T_world_odomsensor_as_cam(const Transformation& T_world_odomsensor_as_cam) {
+    
+    T_world_odomsensor_as_cam_ = std::make_shared<Transformation>(T_world_odomsensor_as_cam);   
   }
 
 

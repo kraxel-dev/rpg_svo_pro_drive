@@ -2,7 +2,16 @@
   <arg name="cam_name" />
   <arg name="calib_file" default="$(find svo_ros)/param/calib/$(arg cam_name).yaml"/>
 
+  <!-- MANDATORY IF: You utilize an arbitrary odometry tf as motion prior in the visual frontend  -->
+  <!-- 
+    Extrinsic calibration between your camera lense and the body of your additional odometry source. 
+    Tf represents the pose of camera lense with respect to the odometry sensor body.
+    Make sure that name of both sensor frames in this tf match the frame names in your config file for both sensors.
+  -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="base_link_to_zed2i_left_optical" args="1.580 0.060 1.566 -0.458, 0.458, -0.538 0.538 base_link zed2i_left_camera_optical_frame "/>
+  
   <!-- SVO node -->
+
   <node pkg="svo_ros" type="svo_node" name="svo" clear_params="true" output="screen" args="-v=40" >
 
     <!-- Camera topic to subscribe to -->
