@@ -17,7 +17,7 @@ pipeline_is_stereo: False
 # max_n_kfs: 5
 #TODO:
 max_fts: 120
-max_n_kfs: 9
+max_n_kfs: 30
 
 # Map scale when initialized (not used for stereo)
 # Increase if the initial scene depth is larger
@@ -44,7 +44,7 @@ kfselect_min_angle: 20
 # do not take a new keyframe
 # You can lower this value for more keyframes\
 # TODO: forward motion reduce
-kfselect_min_disparity: 16
+kfselect_min_disparity: 24
 # When taking a new keyframe,
 # we can already update the newly initialized seeds with old keyframes.
 # This is important for forward looking case.
@@ -75,7 +75,7 @@ automatic_reinitialization: true
 
 # Feature Detection
 #TODO: increase for resolution
-grid_size: 50 # Larger for larger images, for every cell you have max one feature.
+grid_size: 26 # Larger for larger images, for every cell you have max one feature.
 #TODO: increase for resolution
 n_pyr_levels: 5 # Increase for larger images (image align max minus one)
 detector_threshold_primary: 10 # Fast detector threshold
@@ -93,14 +93,14 @@ scan_epi_unit_sphere: False # for wide angle lens, set it to True.
 
 # Pose Optimization
 # TODO:
-poseoptim_thresh: 3.0 # Reprojection outlier threshold (px), should be larger for larger images.
+poseoptim_thresh: 4.0 # Reprojection outlier threshold (px), should be larger for larger images.
 poseoptim_using_unit_sphere: False # For wide angle lens, set it to True
 
 # Depth Filter
 # How many times does the covariance need to decrease until a seed is considered converged.
 # Increase to get more accurate points
 # TODO:
-seed_convergence_sigma2_thresh: 250
+seed_convergence_sigma2_thresh: 220
 
 # IMU
 # Normally the prior should be 0 if not using IMU.
