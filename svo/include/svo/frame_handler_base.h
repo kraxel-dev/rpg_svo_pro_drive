@@ -419,7 +419,7 @@ public:
 
   // KRAXEL EDIT: 
   // TODO: make private
-  std::shared_ptr<Transformation> T_world_wheelodom_ = nullptr;  // current absolute pose of wheel odometry in world
+  std::shared_ptr<Transformation> T_world_odometry_prior_ = nullptr;  // Current absolute pose from your additional odometry sensor with respect to some static odom frame. Will be used to calc motion prior for the visual frontend.
 
   // SVO Modules
   SparseImgAlignBasePtr sparse_img_align_;

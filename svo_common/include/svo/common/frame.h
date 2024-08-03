@@ -294,7 +294,7 @@ public:
     // hardcode extrinisc TODO: swtich extrinsic to member var and make parametrizable
 
     // Eigen::Quaterniond quat(0.547, -0.448, 0.448, -0.547); // original extrinsic
-    Eigen::Quaterniond quat(0.538, -0.458, 0.458, -0.538);  // calibrated with colmaa
+    Eigen::Quaterniond quat(0.538, -0.458, 0.458, -0.538);  // calibrated with colmap
     Transformation T_baselink_cam(kindr::minimal::Position(1.58, 0.0, 1.566), kindr::minimal::RotationQuaternion(quat.normalized()));
     // right transform to express baselink pose as campose
     T_world_baselink_as_cam_ = std::make_shared<Transformation>(T_world_baselink * T_baselink_cam);   

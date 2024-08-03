@@ -232,13 +232,13 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
 
   // KRAXEL EDIT: NOTE: this pose assignment is embedded so deeply so that the above set_start_ reset does not delete the pose of the ref image during init
   // -------------------- assign wheel odom pose to frame
-  if (T_world_wheelodom_)  // if ptr exists
+  if (T_world_odometry_prior_)  // if ptr exists
   {
     for (auto &&frame : *frame_bundle)
     {
       // absolute wheel odom pose to frame with automatic transformation to campose too
       VLOG(40) << "Passing absolute wheel odom pose to frame!";
-      frame->set_T_world_baselink(*T_world_wheelodom_);
+      frame->set_T_world_baselink(*T_world_odometry_prior_);
     }
   }
 
@@ -384,7 +384,7 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
       // -------------------- fetch motion prior from either wheel odom or tum file
       std::shared_ptr<svo::Transformation> T_last = nullptr;
       std::shared_ptr<svo::Transformation> T_new = nullptr;
-      if (priorFromWheelodom) // -------------------- fetch motion from absolute wheel odom camposes
+      if (options_.use_motion_prior_from_tf) // -------------------- fetch motion from absolute wheel odom camposes
       {
         T_last = last_frames_->at(0).get()->T_world_baselink_as_cam_;
         T_new = new_frames_->at(0)->T_world_baselink_as_cam_;

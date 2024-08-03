@@ -45,7 +45,7 @@ public:
   // KRAXEL EDIT: For fetching wheel odom tfs
   tf2_ros::Buffer tfb_;  // tf buffer
   tf2_ros::TransformListener tfl_;
-  geometry_msgs::TransformStamped::ConstPtr curr_wheelodom_tf_ = nullptr;  // ptr to absolute wheel odom pose with respect to some static odom frame
+  geometry_msgs::TransformStamped::ConstPtr curr_odometry_prior_tf_ = nullptr;  // ptr to absolute pose tf from motion prior sensor with respect to some static odom frame
 
   PipelineType pipeline_type_;
   ros::Subscriber sub_remote_key_;
@@ -102,6 +102,14 @@ public:
   // a derived class can implement some additional logic here.
   virtual void imageCallbackPreprocessing(int64_t timestamp_nanoseconds) {}
   virtual void imageCallbackPostprocessing() {}
+
+  /// @brief Get the current absolute pose of your additional odometry sensor from the tf tree and pass it down to the svo instance to 
+  /// be used as motion prior further down the line.
+  void fetchPoseFromOdometryPrior(const ros::Time &msg_stamp);
+  
+  /// @brief Call only after calling fetchPoseFromOdometryPrior(). Returns false if we are still initializing the front-end and odometry prior pose could not be
+  /// fetched for current image.
+  bool checkOdometryPriorInitCondition();
 
   void subscribeImu();
   void subscribeImage();
