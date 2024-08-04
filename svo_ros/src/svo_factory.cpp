@@ -152,6 +152,10 @@ InitializationOptions loadInitializationOptions(const ros::NodeHandle& pnh)
     o.init_type = InitializerType::kOneShot;
   else
     SVO_ERROR_STREAM("Initialization Method not supported: " << init_method);
+
+  // KRAXEL EDIT:
+  /// Currently init param for external motion prior is bounded to the general param also used in frame_handler
+  o.use_motion_prior_from_tf_for_initialization = vk::param<bool>(pnh, "use_motion_prior_from_tf", false);
   return o;
 }
 

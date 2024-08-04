@@ -318,6 +318,7 @@ InitResult FivePointInit::addFrameBundle(
   initialization_utils::copyBearingVectors(
         *frames_cur->at(0), *frames_ref->at(0), matches_cur_ref, &f_cur, &f_ref);
 
+  // -------------------- Calculate Essential Matrix with RANSAC
   // Compute model
   static double inlier_threshold = 1.0 - std::cos(frames_cur->at(0)->getAngleError(options_.reproj_error_thresh));
   typedef opengv::sac_problems::relative_pose::CentralRelativePoseSacProblem CentralRelative;
@@ -339,6 +340,7 @@ InitResult FivePointInit::addFrameBundle(
     return InitResult::kNoKeyframe;
   }
 
+  // -------------------- Retrieve Essential Matrix
   Eigen::Vector3d t = ransac.model_coefficients_.rightCols(1);
   Matrix3d R = ransac.model_coefficients_.leftCols(3);
   Transformation T_cur_from_ref_essential = Transformation(
@@ -355,48 +357,56 @@ InitResult FivePointInit::addFrameBundle(
           << "T.translation() y = " << T_cur_from_ref_.getPosition().y() << ", "
           << "T.translation() z = " << T_cur_from_ref_.getPosition().z();
 
-  // Triangulate
-  // KRAXEL EDIT
-  // -------------------- fetch motion prior from either wheel odom or tum file
-  std::shared_ptr<svo::Transformation> T_last = nullptr;
-  std::shared_ptr<svo::Transformation> T_new = nullptr;
-  bool priorFromWheelodom = true;
-  if (priorFromWheelodom) // -------------------- fetch motion from absolute wheel odom camposes
-  {
-    T_last = frames_ref->at(0)->T_world_odomsensor_as_cam_;
-    T_new = frames_cur->at(0)->T_world_odomsensor_as_cam_;
-  }
   
-  else { // -------------------- fetch motion from tum file
-    std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
-    T_last = io::poseFromTumByNsec(traj_file_name, frames_ref->at(0)->timestamp_, true);
-    T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
-  } // TODO: else option to not use motion prior from hacked sources
-      
+  //  KRAXEL EDIT:
+  // -------------------- Force external motion prior translation into initialization step
+  /// Section below swaps out tranlsational part of the recovered Essential Matrix with translation of external odometry sensor
+  /// such that we can recover metric scale for our map. Rotational part from Essential is kept as is since I'd trust it more
+  /// than pitch and roll angle from an wheel-encoder. If option is not toggled for external odometry source than regular
+  /// Essential matrix is used for init.
+  if (options_.use_motion_prior_from_tf_for_initialization){
+
+    //NOTE: even though it seems like absolute duplicate code to tracking, its not. Still find a way to generalize for both
+    // -------------------- fetch motion prior from either wheel odom or tum file
+    std::shared_ptr<svo::Transformation> T_last = nullptr;
+    std::shared_ptr<svo::Transformation> T_new = nullptr;
+    bool fetch_motion_from_tumfile_instead_of_tf = false;  // TODO: make parametrizable
+    
+    if (!fetch_motion_from_tumfile_instead_of_tf) // -------------------- fetch motion from absolute wheel odom camposes
+    {
+      T_last = frames_ref->at(0)->T_world_odomsensor_as_cam_;
+      T_new = frames_cur->at(0)->T_world_odomsensor_as_cam_;
+    }
+    else { // -------------------- fetch motion from tum file
+      std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+      T_last = io::poseFromTumByNsec(traj_file_name, frames_ref->at(0)->timestamp_, true);
+      T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
+    }
   
-  // -------------------- swap out essential pose with tum file pose
-  svo::Transformation T_rel;
+    // -------------------- swap out essential matrix translation with pose from external odometry
     if (T_last && T_new) {
-      T_rel = T_last->inverse() *  *T_new;  // motion from last pose to current pose
-      VLOG(40)  << "Swapped out tum file pose with essential!";
-      VLOG(40) << "Relative motion x is: " << T_rel.getPosition().x(); 
-      VLOG(40) << "Relative motion y is: " << T_rel.getPosition().y(); 
-      VLOG(40) << "Relative motion z is: " << T_rel.getPosition().z(); 
-      T_cur_from_ref_ = T_rel.inverse();  // force ref pose from tum instead of essential pose
-      T_cur_from_ref_.getRotationMatrix() = T_cur_from_ref_essential.getRotationMatrix();  // trust rotation from essential decomposition instead of wheel odom
+        svo::Transformation T_rel = T_last->inverse() *  *T_new;  // motion from last pose to current pose
+        VLOG(40)  << "Swapped out tum file pose with essential!";
+        VLOG(40) << "Relative motion x is: " << T_rel.getPosition().x(); 
+        VLOG(40) << "Relative motion y is: " << T_rel.getPosition().y(); 
+        VLOG(40) << "Relative motion z is: " << T_rel.getPosition().z(); 
+        T_cur_from_ref_ = T_rel.inverse();  // force reference pose from external odometry instead of essential pose
+        T_cur_from_ref_.getRotationMatrix() = T_cur_from_ref_essential.getRotationMatrix();  // trust original rotation from essential decomposition instead of external odometry
       }
     else {
-      // KRAXEL EDIT: skip triangulation in case no ref pose is available, otherwise essential pose would be utilized with wrong scale
-      SVO_WARN_STREAM("No ref pose for triangulation. Try with next image!");
-      return InitResult::kTracking;
+        // KRAXEL EDIT: skip triangulation in case no ref pose is available, otherwise essential pose would be utilized with wrong scale
+        SVO_WARN_STREAM("No ref pose for triangulation. Try with next image!");
+        return InitResult::kTracking;
       }
-
+  }
   
   // KRAXEL EDIT: 
-  // -------------------- traingualte with swapped pose and scale forced to 1
+  // -------------------- Traingualte: 
+  // - With swapped pose and scale forced to 1 in case reference pose from externa odometry is used.
+  // - Normally otherwise.
   if(initialization_utils::triangulateAndInitializePoints(
         frames_cur->at(0), frames_ref->at(0), T_cur_from_ref_, options_.reproj_error_thresh,
-        depth_at_current_frame_, options_.init_min_inliers, matches_cur_ref))
+        depth_at_current_frame_, options_.init_min_inliers, matches_cur_ref, options_.use_motion_prior_from_tf_for_initialization))
   {
     return InitResult::kSuccess;
   }
@@ -783,7 +793,8 @@ bool triangulateAndInitializePoints(
     const double reprojection_threshold,
     const double depth_at_current_frame,
     const size_t min_inliers_threshold,
-    AbstractInitialization::FeatureMatches& matches_cur_ref)
+    AbstractInitialization::FeatureMatches& matches_cur_ref,
+    const bool is_depth_with_metric_scale)
 {
   Positions points_in_cur;
   initialization_utils::triangulatePoints(
@@ -796,10 +807,10 @@ bool triangulateAndInitializePoints(
     return false;
   }
 
-  // KRAXEL EDIT: manually force scale to 1 since we have real world scale from ref pose
+  // KRAXEL EDIT: If external odometry provided, manually force scale to 1 since we have real world scale from ref pose
   // Scale 3D points to given scene depth and initialize Points
   initialization_utils::rescaleAndInitializePoints(
-        frame_cur, frame_ref, matches_cur_ref, points_in_cur, T_cur_ref, depth_at_current_frame);
+        frame_cur, frame_ref, matches_cur_ref, points_in_cur, T_cur_ref, depth_at_current_frame, is_depth_with_metric_scale);
 
   return true;
 }
@@ -854,7 +865,8 @@ void rescaleAndInitializePoints(
     const AbstractInitialization::FeatureMatches& matches_cur_ref,
     const Positions& points_in_cur,
     const Transformation& T_cur_ref,
-    const double depth_at_current_frame)
+    const double depth_at_current_frame,
+    const bool is_depth_with_metric_scale)
 {
   // compute scale factor
   std::vector<double> depth_vec;
@@ -864,9 +876,14 @@ void rescaleAndInitializePoints(
   }
   CHECK_GT(depth_vec.size(), 1u);
   const double scene_depth_median = vk::getMedian(depth_vec);
-  // const double scale = depth_at_current_frame / scene_depth_median;
-  // KRAXEL EDIT: manually force scale to 1 since we have real world scale from ref pose
-  const double scale = 1.0;
+  double scale = depth_at_current_frame / scene_depth_median;
+  
+  // KRAXEL EDIT
+  if (is_depth_with_metric_scale)
+  {
+    // Manually force scale to 1 since we have real world scale from external reference pose
+    scale = 1.0;
+  }
 
   // reset pose of current frame to have right scale
   frame_cur->T_f_w_ = T_cur_ref * frame_ref->T_f_w_;

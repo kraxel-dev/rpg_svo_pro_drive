@@ -211,16 +211,19 @@ struct BaseOptions  // NOTE: parameters visual frontend with detailed explanatio
   /// to the global map / loop closure database is still good.
   double global_map_lc_timeout_sec_ = 3.0;
 
-  /// Kraxel EDIT
-  /// Following contains options for using arbitrary motion prior from a tf
-  /// Keep in mind that this will hijack and break some of the IMU params so better use vision only frontend with tf motion prior
+  // KRAXEL EDIT:
+  /// Following contains options for using motion prior from the pose tf of an arbitrary external odometry sensor.
+  /// Keep in mind that this will hijack and break some of the IMU params so better use vision only frontend with tf motion prior.
+  
+  /// Activate using motion prior from tf of external odometry sensor in visual frontend. Frontend still runs in its vanilla form when no tf is provided during runtime.
   bool use_motion_prior_from_tf = false;
-
-  // name of body/sensor frame of your motion prior (must match name in ros tf tree)
+  
+  /// Name of body/sensor frame of your motion prior (must match name in ros tf tree)
   std::string motion_prior_tf_body_frame = "base_link";
-  // name of source frame to which the pose is expressed in (example: world, odom, map. Depending on your own notation)
+  /// Name of source frame to which the pose is expressed in (example: world, odom, map. Depending on your own notation)
   std::string motion_prior_tf_source_frame = "odom";
   
+  /// Name of your camera sensor frame as registered by the tf tree.
   /// Required to catch extrinsic calibration between your motion prior source and camera lense. Actual extrinsic Tf must be manually provided in launch file. 
   std::string camera_lense_tf_frame = "zed2i_left_camera_optical_frame";
 };

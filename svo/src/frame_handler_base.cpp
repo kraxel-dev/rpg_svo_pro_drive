@@ -242,6 +242,7 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
       // right transform with extrinsic to express odometry pose as camera pose
       Transformation T_world_odomsensor_as_cam = *T_world_odomsensor_ * *T_odomsensor_cam_ ;  // absolute odometry pose expressed as camera pose
 
+      // pass absolute cam pose to the frame object
       frame->set_T_world_odomsensor_as_cam(T_world_odomsensor_as_cam);
     }
   }
@@ -1180,7 +1181,7 @@ void FrameHandlerBase::getMotionPrior(const bool /*use_velocity_in_frame*/)
   {
       bool fetch_motion_from_tumfile_instead_of_tf = false;  // TODO: make enum and parametrizable
 
-      // -------------------- fetch motion prior from either wheel odom or tum file
+      // -------------------- fetch motion prior from either external odometry sensor or tum file
       std::shared_ptr<svo::Transformation> T_last = nullptr;
       std::shared_ptr<svo::Transformation> T_new = nullptr;
       
@@ -1192,18 +1193,17 @@ void FrameHandlerBase::getMotionPrior(const bool /*use_velocity_in_frame*/)
       else // -------------------- fetch motion from file
       { 
         // -------------------- retrieve timestamps
-        uint64_t nsec_last = last_frames_->at(0).get()->timestamp_;  // nsec timestamp of last used image
-        uint64_t nsec_new = new_frames_->at(0)->timestamp_;  // nsec timestamp of currently processed image
+        VLOG(40) << "LAST IMAGE TIMESTAMP: " << last_frames_->at(0).get()->timestamp_;
+        VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << new_frames_->at(0)->timestamp_;
         
-        VLOG(40) << "LAST IMAGE TIMESTAMP: " << nsec_last;
-        VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << nsec_new;
         std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
-        T_last = io::poseFromTumByNsec(traj_file_name, nsec_last);
-        T_new = io::poseFromTumByNsec(traj_file_name, nsec_new);
+        T_last = io::poseFromTumByNsec(traj_file_name, last_frames_->at(0).get()->timestamp_);
+        T_new = io::poseFromTumByNsec(traj_file_name, new_frames_->at(0)->timestamp_);
       }
       
       if (T_last && T_new) {
-        // -------------------- get relative motion absolute cam poses
+        
+        // -------------------- get relative camera motion from absolute cam poses
         
         // left transform new absolute campose into coordsystem of old absolute campose
         svo::Transformation T_rel(T_last->inverse() *  *T_new) ;  // relative pose from last pose to current pose
