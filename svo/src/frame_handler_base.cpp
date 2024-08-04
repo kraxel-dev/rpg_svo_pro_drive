@@ -229,10 +229,11 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     setInitialPose(frame_bundle);
     stage_ = Stage::kInitializing;
   }
-
+  
+  // KRAXEL EDIT
   // NOTE: this pose assignment is embedded so deeply so that the above set_start_ reset does not delete the pose of the ref image during init
   // -------------------- Assign absolute odometry prior pose to current frame
-  if (T_world_odomsensor_ && T_odomsensor_cam_)  // if ptr to pose exists is decided upstream
+  if (T_world_odomsensor_ && T_odomsensor_cam_)  // check for extrinsics and pose from external source. If ptr to pose exists is decided upstream
   {
     for (auto &&frame : *frame_bundle)
     {
@@ -245,6 +246,7 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     }
   }
 
+  // -------------------- original code
   if (stage_ == Stage::kPaused)
   {
     return false;
@@ -375,51 +377,11 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     // TODO(cfo): remove same from processFrame in mono.
     if (last_frames_)
     {
-      
+      VLOG(40) << "Predict pose of new image using motion prior.";
+
       // KRAXEL EDIT:
-      bool priorFromWheelodom = true;  // TODO: make enum and parametrizable
-      // -------------------- retrieve timestamps
-      uint64_t nsec_last = last_frames_->at(0).get()->timestamp_;  // nsec timestamp of last used image
-      uint64_t nsec_new = frame_bundle->at(0)->timestamp_;  // nsec timestamp of currently processed image
-      VLOG(40) << "LAST IMAGE TIMESTAMP: " << nsec_last;
-      VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << nsec_new;
-
-      // -------------------- fetch motion prior from either wheel odom or tum file
-      std::shared_ptr<svo::Transformation> T_last = nullptr;
-      std::shared_ptr<svo::Transformation> T_new = nullptr;
-      if (options_.use_motion_prior_from_tf) // -------------------- fetch motion from absolute wheel odom camposes
-      {
-        T_last = last_frames_->at(0).get()->T_world_odomsensor_as_cam_;
-        T_new = new_frames_->at(0)->T_world_odomsensor_as_cam_;
-      }
-      
-      else { // -------------------- fetch motion from file
-        std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
-        T_last = io::poseFromTumByNsec(traj_file_name, nsec_last);
-        T_new = io::poseFromTumByNsec(traj_file_name, nsec_new);
-      } // TODO: else option to not use motion prior from hacked sources
-      
-      
-      // -------------------- original motion prior setter
-      VLOG(40) << "Predict pose of new image using motion prior.";  // NOTE: motion prior is selected here
+      // -------------------- calc and setting of motion prior from tf is embedded in function below
       getMotionPrior(false);
-      
-      // -------------------- get relative motion absolute cam poses
-      svo::Transformation T_rel;
-      if (T_last && T_new) {
-        svo::Transformation T_new_deref = *T_new;
-        svo::Transformation T_last_deref = *T_last;
-
-        T_rel = T_last->inverse() *  T_new_deref;  // motion from last pose to current pose
-        VLOG(40)  << "Relative motion between current and last image calculated!";
-        std::cout << T_rel.getPosition().x()  << std::endl; 
-        std::cout << T_rel.getPosition().y()  << std::endl; 
-        std::cout << T_rel.getPosition().z()  << std::endl; 
-
-        // -------------------- force hardcoded motion prior 
-        T_newimu_lastimu_prior_ = T_rel.inverse();
-        have_motion_prior_ = true;
-      }
 
       // set initial pose estimate
       for (size_t i = 0; i < new_frames_->size(); ++i)
@@ -429,7 +391,6 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
       }
     }
   }
-
 
   // Perform tracking.
   update_res_ = processFrameBundle();
@@ -1212,6 +1173,61 @@ bool FrameHandlerBase::needNewKf(const Transformation&)
 
 void FrameHandlerBase::getMotionPrior(const bool /*use_velocity_in_frame*/)
 {
+  
+  // KRAXEL EDIT
+  // -------------------- Use motion prior from external odometry source (if activated) and ignore IMU
+  if (options_.use_motion_prior_from_tf)
+  {
+      bool fetch_motion_from_tumfile_instead_of_tf = false;  // TODO: make enum and parametrizable
+
+      // -------------------- fetch motion prior from either wheel odom or tum file
+      std::shared_ptr<svo::Transformation> T_last = nullptr;
+      std::shared_ptr<svo::Transformation> T_new = nullptr;
+      
+      if (!fetch_motion_from_tumfile_instead_of_tf) // -------------------- fetch motion from absolute odometry camposes
+      {
+        T_last = last_frames_->at(0).get()->T_world_odomsensor_as_cam_;
+        T_new = new_frames_->at(0)->T_world_odomsensor_as_cam_;
+      }
+      else // -------------------- fetch motion from file
+      { 
+        // -------------------- retrieve timestamps
+        uint64_t nsec_last = last_frames_->at(0).get()->timestamp_;  // nsec timestamp of last used image
+        uint64_t nsec_new = new_frames_->at(0)->timestamp_;  // nsec timestamp of currently processed image
+        
+        VLOG(40) << "LAST IMAGE TIMESTAMP: " << nsec_last;
+        VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << nsec_new;
+        std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
+        T_last = io::poseFromTumByNsec(traj_file_name, nsec_last);
+        T_new = io::poseFromTumByNsec(traj_file_name, nsec_new);
+      }
+      
+      if (T_last && T_new) {
+        // -------------------- get relative motion absolute cam poses
+        
+        // left transform new absolute campose into coordsystem of old absolute campose
+        svo::Transformation T_rel(T_last->inverse() *  *T_new) ;  // relative pose from last pose to current pose
+        VLOG(40) << "Relative motion between current and last image calculated!";
+        // cout instead of log to properly display the translations
+        std::cout << "Translation in x:" << T_rel.getPosition().x()  << std::endl; 
+        std::cout << "Translation in y:" << T_rel.getPosition().y()  << std::endl; 
+        std::cout << "Translation in z:" << T_rel.getPosition().z()  << std::endl; 
+
+        // -------------------- force hardcoded motion prior 
+        VLOG(40) << "Setting motion prior for new image using poses from external odometry source!"; 
+        T_newimu_lastimu_prior_ = T_rel.inverse();
+        have_motion_prior_ = true;
+      }
+      else {
+        VLOG(40) << "Setting motion prior using poses from external odometry source failed for this image! Proceed without prior!"; 
+        have_motion_prior_ = false;
+      }
+    
+    // break this function and ignore IMU stuff below if motion prior from tf is toggled
+    return;
+  }
+  
+  // -------------------- original code
   if (have_rotation_prior_)
   {
     VLOG(40) << "Get motion prior from provided rotation prior.";
