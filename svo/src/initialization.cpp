@@ -367,21 +367,11 @@ InitResult FivePointInit::addFrameBundle(
   if (options_.use_motion_prior_from_tf_for_initialization){
 
     //NOTE: even though it seems like absolute duplicate code to tracking, its not. Still find a way to generalize for both
-    // -------------------- fetch motion prior from either wheel odom or tum file
-    std::shared_ptr<svo::Transformation> T_last = nullptr;
-    std::shared_ptr<svo::Transformation> T_new = nullptr;
+    // -------------------- fetch motion prior from external odometry source as camPoses
     bool fetch_motion_from_tumfile_instead_of_tf = false;  // TODO: make parametrizable
     
-    if (!fetch_motion_from_tumfile_instead_of_tf) // -------------------- fetch motion from absolute wheel odom camposes
-    {
-      T_last = frames_ref->at(0)->T_world_odomsensor_as_cam_;
-      T_new = frames_cur->at(0)->T_world_odomsensor_as_cam_;
-    }
-    else { // -------------------- fetch motion from tum file
-      std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
-      T_last = io::poseFromTumByNsec(traj_file_name, frames_ref->at(0)->timestamp_, true);
-      T_new = io::poseFromTumByNsec(traj_file_name, frames_cur->at(0)->timestamp_, true); 
-    }
+    std::shared_ptr<svo::Transformation> T_last = frames_ref->at(0)->T_world_odomsensor_as_cam_;
+    std::shared_ptr<svo::Transformation> T_new = frames_cur->at(0)->T_world_odomsensor_as_cam_;
   
     // -------------------- swap out essential matrix translation with pose from external odometry
     if (T_last && T_new) {
@@ -397,7 +387,7 @@ InitResult FivePointInit::addFrameBundle(
         // KRAXEL EDIT: skip triangulation in case no ref pose is available, otherwise essential pose would be utilized with wrong scale
         SVO_WARN_STREAM("No ref pose for triangulation. Try with next image!");
         return InitResult::kTracking;
-      }
+    }
   }
   
   // KRAXEL EDIT: 

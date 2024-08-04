@@ -134,14 +134,14 @@ use_motion_prior_from_tf : True  # Make sure use_imu is set to false if you togg
 
 # NOTE: KRAXEL EDIT: Abused as weights for our own motion prior given as tf
 # keep trust in rotation low as roll and pitch are not reliable from wheel odometry
-img_align_prior_lambda_rot: 0.1 # Gyroscope prior in sparse image alignment (overwritten our own motion prior tf)
-img_align_prior_lambda_trans: 0.3 # Constant velocity assumption prior in sparse image alignment (overwritten our own motion prior tf)
+img_align_prior_lambda_rot: 0.1 # Gyroscope prior in sparse image alignment (overwritten by our own motion prior tf)
+img_align_prior_lambda_trans: 0.3 # Constant velocity assumption prior in sparse image alignment (overwritten by our own motion prior tf)
   
-# Name of body/sensor frame of your motion prior (must match name in ros tf tree for both absolute pose as well as extrnisics to camera)
+# Name of body/sensor frame of your motion prior (must match name in ros tf tree for both absolute pose as well as extrinsics to camera)
 motion_prior_tf_body_frame : base_link
 # name of source frame to which the pose is expressed in (example: world, odom, map. Depending on your own notation)
 motion_prior_tf_source_frame : odom
-  
+
 # Required to catch extrinsic calibration between your external motion prior source and camera lense.
 # Actual extrinsic Tf must be manually provided in launch file. Make sure this frame name here matches
 # the name of your provided extrinsic ros tf from your launch file. 

@@ -1177,29 +1177,11 @@ void FrameHandlerBase::getMotionPrior(const bool /*use_velocity_in_frame*/)
   
   // KRAXEL EDIT
   // -------------------- Use motion prior from external odometry source (if activated) and ignore IMU
-  if (options_.use_motion_prior_from_tf)
-  {
-      bool fetch_motion_from_tumfile_instead_of_tf = false;  // TODO: make enum and parametrizable
-
-      // -------------------- fetch motion prior from either external odometry sensor or tum file
-      std::shared_ptr<svo::Transformation> T_last = nullptr;
-      std::shared_ptr<svo::Transformation> T_new = nullptr;
-      
-      if (!fetch_motion_from_tumfile_instead_of_tf) // -------------------- fetch motion from absolute odometry camposes
-      {
-        T_last = last_frames_->at(0).get()->T_world_odomsensor_as_cam_;
-        T_new = new_frames_->at(0)->T_world_odomsensor_as_cam_;
-      }
-      else // -------------------- fetch motion from file
-      { 
-        // -------------------- retrieve timestamps
-        VLOG(40) << "LAST IMAGE TIMESTAMP: " << last_frames_->at(0).get()->timestamp_;
-        VLOG(40) << "CURRENT IMAGE TIMESTAMP: " << new_frames_->at(0)->timestamp_;
-        
-        std::string traj_file_name = "/home/azuo/FromSource/rpg_svo_pro_drive/svo/res/motion_trajectories/cam_trajectory_colmap_reloc_backwards_queries_full.tum";
-        T_last = io::poseFromTumByNsec(traj_file_name, last_frames_->at(0).get()->timestamp_);
-        T_new = io::poseFromTumByNsec(traj_file_name, new_frames_->at(0)->timestamp_);
-      }
+  if (options_.use_motion_prior_from_tf) {
+  
+      // -------------------- fetch motion prior from either external odometry as camPoses
+      std::shared_ptr<svo::Transformation> T_last = last_frames_->at(0).get()->T_world_odomsensor_as_cam_;
+      std::shared_ptr<svo::Transformation> T_new = new_frames_->at(0)->T_world_odomsensor_as_cam_;
       
       if (T_last && T_new) {
         
@@ -1222,10 +1204,10 @@ void FrameHandlerBase::getMotionPrior(const bool /*use_velocity_in_frame*/)
         VLOG(40) << "Setting motion prior using poses from external odometry source failed for this image! Proceed without prior!"; 
         have_motion_prior_ = false;
       }
-    
     // break this function and ignore IMU stuff below if motion prior from tf is toggled
     return;
   }
+  
   
   // -------------------- original code
   if (have_rotation_prior_)
