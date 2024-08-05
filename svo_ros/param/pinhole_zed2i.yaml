@@ -16,7 +16,7 @@ pipeline_is_stereo: False
 # max_fts: 120
 # max_n_kfs: 5
 #NOTE:
-max_fts: 120
+max_fts: 160
 max_n_kfs: 30
 
 # Map scale when initialized (not used for stereo)
@@ -75,7 +75,7 @@ automatic_reinitialization: true
 
 # Feature Detection
 #NOTE: increase for resolution
-grid_size: 26 # Larger for larger images, for every cell you have max one feature.
+grid_size: 22 # Larger for larger images, for every cell you have max one feature.
 #NOTE: increase for resolution
 n_pyr_levels: 5 # Increase for larger images (image align max minus one)
 detector_threshold_primary: 10 # Fast detector threshold
