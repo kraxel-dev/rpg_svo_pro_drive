@@ -117,7 +117,7 @@ When using motion prior from external source, the fetched absolute poses between
 
 This is the not-so-fun part. You must provide the extrinsic calibration from your odometry sensor to the camera lense yourself. Extrinsics must be published as static ros tf and can be placed in [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/launch/frontend/run_from_bag_zed2i.launch#L11) of your launch file. Make sure that names of **source and target frame** in your launch file **match** the names of **body and camera frame** that you provide at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L148) of your parameter file. Otherwise extrinsics cannot be fetched and the motion of the external odometry sensor cannot transformed into the motion of the camera.
 
-Provide the extrnisics such that the pose of the camera lense (z-axis pointing forwards) is expressed in the local body-frame of the odometry sensor, not the other way around.
+Provide the extrinsics such that the pose of the camera lense (z-axis pointing forwards) is expressed in the local body-frame of the odometry sensor, not the other way around.
 
 Another important step is to set the extrinsic calibration from camera to IMU at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/calib/zed2i_left_rectified.yaml#L24) of your calib file to the identity transform. Even though IMU is not being used, the motion prior lives in the body frame of the IMU, **not** in the camera frame. To avoid breaking the original codebase it is kept like that.
 
