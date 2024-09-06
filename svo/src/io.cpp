@@ -8,6 +8,13 @@
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
+#include <sstream>
+#include <limits>
+
+#include <boost/multiprecision/cpp_dec_float.hpp>
+#include <boost/multiprecision/cpp_bin_float.hpp>
+#include <boost/multiprecision/float128.hpp>
+
 
 // svo
 #include <svo/io.h>
@@ -18,6 +25,120 @@
 
 namespace svo {
 namespace io {
+
+std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp, bool allowTimediff)
+{
+    std::shared_ptr<svo::Transformation> refPose = nullptr;
+
+    std::ifstream data(tumFilePath);
+    std::string line;
+    
+    // iterate over all csv rows
+    while (std::getline(data, line))
+    {
+
+        std::stringstream lineStream(line);
+        std::string cell;
+        int i = 0;
+        double x, y, z;
+        double qx, qy, qz, qw;
+        uint64_t timestamp = 0;
+
+        bool skipRow = true;
+
+        // iterate over current row content
+        while (std::getline(lineStream, cell, ' '))
+        {
+            if (i == 0)
+            {
+              // parse scientific e9 notation into double 
+              boost::multiprecision::cpp_dec_float_50 stampBoost;  // high precision
+              
+              // VLOG(40) << cell;
+              std::istringstream iss(cell);  // parse string represening the timesamp in seconds e+09
+              iss >> stampBoost;  // forward string to boost double
+              std::setprecision(21);
+              // VLOG(40) << std::setprecision(21) <<"TUM Trajectory: Parsed boost timestamp: " << stampBoost;
+
+              stampBoost *= 1e9;  // convert secs to nsecs
+              
+              // convert into nanosecond integer timestamp
+              timestamp = static_cast<uint64_t>(stampBoost);
+              // VLOG(40) << "TUM Trajectory: Parsed nsec timestamp: " << timestamp;
+
+              // time diff threshold
+              uint64_t thresh = 32; //  msec time  // TODO: make parametrizable
+              thresh *= 1e6;  // extend msec to nsec
+
+              if (timestamp == nsecRefStamp)
+              {
+                skipRow = false;
+                VLOG(40) << "TUM trajectory file parsing: matching timestamp found at: " << timestamp ;
+              }
+              // during init we require the ref pose for triangulation so we lax the timestamp matching
+              else if (allowTimediff)
+              {
+                uint64_t timediff = std::max(timestamp, nsecRefStamp) - std::min(timestamp, nsecRefStamp);
+                if (timediff <= thresh )
+                {
+                  skipRow = false;
+                  VLOG(40) << "TUM trajectory file parsing: roughly matching timestamp found with difference of: " << timediff;
+                }
+              }
+              
+            }
+
+            // parse pose
+            if (i == 1)
+            {
+                x = (std::stod(cell));
+            }
+            if (i == 2)
+            {
+                y = (std::stod(cell));
+            }
+            if (i == 3)
+            {
+                z = (std::stod(cell));
+            }
+            if (i == 4)
+            {
+                qx = std::stod(cell);
+            }
+            if (i == 5)
+            {
+                qy = std::stod(cell);
+            }
+            if (i == 6)
+            {
+                qz = std::stod(cell);
+            }
+            if (i == 7)
+            {
+                qw = std::stod(cell);
+            }
+
+            i = i + 1;
+        
+        }
+
+        if (skipRow) {continue;}  // skip to new row if timestamp dont match
+        
+        svo::Quaternion quat_world_frame(qw, qx, qy, qz);  // rotates cam into world which is the rotation of camera with respect to the world
+        svo::Position pos_world_frame(x, y, z);  // position of cam with respect to world
+        svo::Transformation pose_w_f(pos_world_frame, quat_world_frame);
+
+        refPose = std::make_shared<svo::Transformation>(pose_w_f);
+        
+        data.close();
+
+        return refPose;
+    }
+    SVO_WARN_STREAM("No suitable pose found in tum file to reference timestamp!");
+    data.close();
+
+    return refPose;
+}
 
 bool saveMap(
     const MapPtr& map,

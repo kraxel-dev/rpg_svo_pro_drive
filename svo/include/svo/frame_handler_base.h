@@ -38,7 +38,7 @@ enum class KeyframeCriterion {
 };
 
 /// Options for base frame handler module. Sets tracing and quality options.
-struct BaseOptions
+struct BaseOptions  // NOTE: parameters visual frontend with detailed explanation
 {
   /// The VO only keeps a list of N keyframes in the map. If a new keyframe
   /// is selected, then one furthest away from the current position is removed
@@ -210,6 +210,22 @@ struct BaseOptions
   /// the system is initialized, we still think the relative pose with respect
   /// to the global map / loop closure database is still good.
   double global_map_lc_timeout_sec_ = 3.0;
+
+  // KRAXEL EDIT:
+  /// Following contains options for using motion prior from the pose tf of an arbitrary external odometry sensor.
+  /// Keep in mind that this will hijack and break some of the IMU params so better use vision only frontend with tf motion prior.
+  
+  /// Activate using motion prior from tf of external odometry sensor in visual frontend. Frontend still runs in its vanilla form when no tf is provided during runtime.
+  bool use_motion_prior_from_tf = false;
+  
+  /// Name of body/sensor frame of your motion prior (must match name in ros tf tree)
+  std::string motion_prior_tf_body_frame = "base_link";
+  /// Name of source frame to which the pose is expressed in (example: world, odom, map. Depending on your own notation)
+  std::string motion_prior_tf_source_frame = "odom";
+  
+  /// Name of your camera sensor frame as registered by the tf tree.
+  /// Required to catch extrinsic calibration between your motion prior source and camera lense. Actual extrinsic Tf must be manually provided in launch file. 
+  std::string camera_lense_tf_frame = "zed2i_left_camera_optical_frame";
 };
 
 enum class Stage {
@@ -403,6 +419,13 @@ public:
 
   /// Initial orientation
   Transformation T_world_imuinit;
+
+  // KRAXEL EDIT: 
+  // Only used if motion prior from tf is toggled
+  /// Current absolute pose from your additional odometry sensor (wheel encoder, radar) with respect to some static odom frame. Will be used to calc motion prior for the visual frontend.
+  std::shared_ptr<Transformation> T_world_odomsensor_ = nullptr;  // TODO: make private
+  /// Pose of camera frame expressed in body frame of the additional odometry source (wheel encoder, radar) representing the extrinsic calibration between both sensors.
+  std::shared_ptr<Transformation> T_odomsensor_cam_ = nullptr;  // TODO: make private
 
   // SVO Modules
   SparseImgAlignBasePtr sparse_img_align_;

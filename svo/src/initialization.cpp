@@ -29,6 +29,8 @@
 #include <vikit/sample.h>
 #include <opencv2/video/tracking.hpp> // for lucas kanade tracking
 #include <opencv2/opencv.hpp> // for display
+#include <svo/io.h>  // parse tum file
+
 
 #ifdef SVO_USE_OPENGV
 // used for opengv
@@ -58,6 +60,7 @@
 # include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 # include <gtsam/slam/BetweenFactor.h>
 #endif
+
 
 namespace svo {
 
@@ -119,6 +122,7 @@ InitResult HomographyInit::addFrameBundle(
   if(!trackFeaturesAndCheckDisparity(frames_cur))
     return InitResult::kTracking;
 
+  VLOG(40)  << "Homography init" ;
   // Create vector of bearing vectors
   const FrameBundlePtr frames_ref = tracker_->getOldestFrameInTrack(0);
   const Frame& frame_ref = *frames_ref->at(0);
@@ -293,9 +297,14 @@ InitResult FivePointInit::addFrameBundle(
     const FrameBundlePtr& frames_cur)
 {
 #ifdef SVO_USE_OPENGV
+  VLOG(40) << "5 point initialization!" ;
   // Track and detect features.
-  if(!trackFeaturesAndCheckDisparity(frames_cur))
-    return InitResult::kTracking;
+  if(!trackFeaturesAndCheckDisparity(frames_cur)) {
+    VLOG(40) << "Initializer still tracking as min disparity still not reached!";
+    return InitResult::kTracking;}
+
+  // KRAXEL EDIT
+  VLOG(40) << "Min disparity reached! We can triangulate now!" ;
 
   // Create vector of bearing vectors
   const FrameBundlePtr frames_ref = tracker_->getOldestFrameInTrack(0);
@@ -309,6 +318,7 @@ InitResult FivePointInit::addFrameBundle(
   initialization_utils::copyBearingVectors(
         *frames_cur->at(0), *frames_ref->at(0), matches_cur_ref, &f_cur, &f_ref);
 
+  // -------------------- Calculate Essential Matrix with RANSAC
   // Compute model
   static double inlier_threshold = 1.0 - std::cos(frames_cur->at(0)->getAngleError(options_.reproj_error_thresh));
   typedef opengv::sac_problems::relative_pose::CentralRelativePoseSacProblem CentralRelative;
@@ -330,23 +340,63 @@ InitResult FivePointInit::addFrameBundle(
     return InitResult::kNoKeyframe;
   }
 
+  // -------------------- Retrieve Essential Matrix
   Eigen::Vector3d t = ransac.model_coefficients_.rightCols(1);
   Matrix3d R = ransac.model_coefficients_.leftCols(3);
-  T_cur_from_ref_ = Transformation(
+  Transformation T_cur_from_ref_essential = Transformation(
         Quaternion(R),
-        ransac.model_coefficients_.rightCols(1));
+        ransac.model_coefficients_.rightCols(1));  // Motion decomposed from essential matrx
+  T_cur_from_ref_ = T_cur_from_ref_essential;
 
   VLOG(5) << "5Pt RANSAC:" << std::endl
           << "# Iter = " << ransac.iterations_ << std::endl
           << "# Inliers = " << ransac.inliers_.size() << std::endl
           << "Model = " << ransac.model_coefficients_ << std::endl
           << "T.rotation_matrix() = " << T_cur_from_ref_.getRotationMatrix() << std::endl
-          << "T.translation() = " << T_cur_from_ref_.getPosition();
+          << "T.translation() x = " << T_cur_from_ref_.getPosition().x() << ", "
+          << "T.translation() y = " << T_cur_from_ref_.getPosition().y() << ", "
+          << "T.translation() z = " << T_cur_from_ref_.getPosition().z();
 
-  // Triangulate
+  
+  //  KRAXEL EDIT:
+  // -------------------- Force external motion prior translation into initialization step
+  /// Section below swaps out tranlsational part of the recovered Essential Matrix with translation of external odometry sensor
+  /// such that we can recover metric scale for our map. Rotational part from Essential is kept as is since I'd trust it more
+  /// than pitch and roll angle from an wheel-encoder. If option is not toggled for external odometry source than regular
+  /// Essential matrix is used for init.
+  if (options_.use_motion_prior_from_tf_for_initialization){
+
+    //NOTE: even though it seems like absolute duplicate code to tracking, its not. Still find a way to generalize for both
+    // -------------------- fetch motion prior from external odometry source as camPoses
+    bool fetch_motion_from_tumfile_instead_of_tf = false;  // TODO: make parametrizable
+    
+    std::shared_ptr<svo::Transformation> T_last = frames_ref->at(0)->T_world_odomsensor_as_cam_;
+    std::shared_ptr<svo::Transformation> T_new = frames_cur->at(0)->T_world_odomsensor_as_cam_;
+  
+    // -------------------- swap out essential matrix translation with pose from external odometry
+    if (T_last && T_new) {
+        svo::Transformation T_rel = T_last->inverse() *  *T_new;  // motion from last pose to current pose
+        VLOG(40)  << "Swapped out tum file pose with essential!";
+        VLOG(40) << "Relative motion x is: " << T_rel.getPosition().x(); 
+        VLOG(40) << "Relative motion y is: " << T_rel.getPosition().y(); 
+        VLOG(40) << "Relative motion z is: " << T_rel.getPosition().z(); 
+        T_cur_from_ref_ = T_rel.inverse();  // force reference pose from external odometry instead of essential pose
+        T_cur_from_ref_.getRotationMatrix() = T_cur_from_ref_essential.getRotationMatrix();  // trust original rotation from essential decomposition instead of external odometry
+      }
+    else {
+        // KRAXEL EDIT: skip triangulation in case no ref pose is available, otherwise essential pose would be utilized with wrong scale
+        SVO_WARN_STREAM("No ref pose for triangulation. Try with next image!");
+        return InitResult::kTracking;
+    }
+  }
+  
+  // KRAXEL EDIT: 
+  // -------------------- Traingualte: 
+  // - With swapped pose and scale forced to 1 in case reference pose from externa odometry is used.
+  // - Normally otherwise.
   if(initialization_utils::triangulateAndInitializePoints(
         frames_cur->at(0), frames_ref->at(0), T_cur_from_ref_, options_.reproj_error_thresh,
-        depth_at_current_frame_, options_.init_min_inliers, matches_cur_ref))
+        depth_at_current_frame_, options_.init_min_inliers, matches_cur_ref, options_.use_motion_prior_from_tf_for_initialization))
   {
     return InitResult::kSuccess;
   }
@@ -361,7 +411,7 @@ InitResult FivePointInit::addFrameBundle(
 InitResult OneShotInit::addFrameBundle(const FrameBundlePtr &frames_cur)
 {
   CHECK(frames_cur->size() == 1) << "OneShot Initialization doesn't work with Camera Array";
-
+  VLOG(40) << "One shot init!";
   // Track and detect features.
   trackFeaturesAndCheckDisparity(frames_cur);
 
@@ -733,7 +783,8 @@ bool triangulateAndInitializePoints(
     const double reprojection_threshold,
     const double depth_at_current_frame,
     const size_t min_inliers_threshold,
-    AbstractInitialization::FeatureMatches& matches_cur_ref)
+    AbstractInitialization::FeatureMatches& matches_cur_ref,
+    const bool is_depth_with_metric_scale)
 {
   Positions points_in_cur;
   initialization_utils::triangulatePoints(
@@ -746,9 +797,10 @@ bool triangulateAndInitializePoints(
     return false;
   }
 
+  // KRAXEL EDIT: If external odometry provided, manually force scale to 1 since we have real world scale from ref pose
   // Scale 3D points to given scene depth and initialize Points
   initialization_utils::rescaleAndInitializePoints(
-        frame_cur, frame_ref, matches_cur_ref, points_in_cur, T_cur_ref, depth_at_current_frame);
+        frame_cur, frame_ref, matches_cur_ref, points_in_cur, T_cur_ref, depth_at_current_frame, is_depth_with_metric_scale);
 
   return true;
 }
@@ -803,7 +855,8 @@ void rescaleAndInitializePoints(
     const AbstractInitialization::FeatureMatches& matches_cur_ref,
     const Positions& points_in_cur,
     const Transformation& T_cur_ref,
-    const double depth_at_current_frame)
+    const double depth_at_current_frame,
+    const bool is_depth_with_metric_scale)
 {
   // compute scale factor
   std::vector<double> depth_vec;
@@ -813,7 +866,14 @@ void rescaleAndInitializePoints(
   }
   CHECK_GT(depth_vec.size(), 1u);
   const double scene_depth_median = vk::getMedian(depth_vec);
-  const double scale = depth_at_current_frame / scene_depth_median;
+  double scale = depth_at_current_frame / scene_depth_median;
+  
+  // KRAXEL EDIT
+  if (is_depth_with_metric_scale)
+  {
+    // Manually force scale to 1 since we have real world scale from external reference pose
+    scale = 1.0;
+  }
 
   // reset pose of current frame to have right scale
   frame_cur->T_f_w_ = T_cur_ref * frame_ref->T_f_w_;
@@ -872,24 +932,31 @@ AbstractInitialization::UniquePtr makeInitializer(
   switch(init_options.init_type)
   {
     case InitializerType::kHomography:
+      VLOG(1) << "Initializer Type: kHomography";
       initializer.reset(new HomographyInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kTwoPoint:
+      VLOG(1) << "Initializer Type: kTwoPoint";
       initializer.reset(new TwoPointInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kFivePoint:
+      VLOG(1) << "Initializer Type: kFivePoint";
       initializer.reset(new FivePointInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kOneShot:
+      VLOG(1) << "Initializer Type: kOneShot";
       initializer.reset(new OneShotInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kStereo:
+      VLOG(1) << "Initializer Type: kStereo";
       initializer.reset(new StereoInit(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kArrayGeometric:
+      VLOG(1) << "Initializer Type: kArrayGeometric";
       initializer.reset(new ArrayInitGeometric(init_options, tracker_options, detector_options, cams));
       break;
     case InitializerType::kArrayOptimization:
+      VLOG(1) << "Initializer Type: kArrayOptimization";
       initializer.reset(new ArrayInitOptimization(init_options, tracker_options, detector_options, cams));
       break;
     default:

@@ -38,6 +38,9 @@ size_t SparseImgAlign::run(
   CHECK(!ref_frames->empty());
   CHECK_EQ(ref_frames->size(), cur_frames->size());
 
+  VLOG(40) << "Nr reference frames: " << ref_frames->size();
+  VLOG(40) << "Nr current frames: " << cur_frames->size();
+
   // Select all visible features and subsample if required.
   fts_vec_.clear();
   size_t n_fts_to_track = 0;
@@ -72,7 +75,8 @@ size_t SparseImgAlign::run(
 
   // the variable to be optimized is the imu-pose of the current frame
   Transformation T_icur_iref =
-      cur_frames_->at(0)->T_imu_world() * T_iref_world_.inverse();
+      cur_frames_->at(0)->T_imu_world() * T_iref_world_.inverse();  
+
 
   SparseImgAlignState state;
   state.T_icur_iref = T_icur_iref;

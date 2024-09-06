@@ -15,9 +15,9 @@ pipeline_is_stereo: False
 # To run faster, you can decrease `max_fts` and `max_n_kfs`, for example:
 # max_fts: 120
 # max_n_kfs: 5
-#TODO:
-max_fts: 180
-max_n_kfs: 9
+#NOTE:
+max_fts: 160
+max_n_kfs: 30
 
 # Map scale when initialized (not used for stereo)
 # Increase if the initial scene depth is larger
@@ -42,8 +42,9 @@ kfselect_min_dist_metric: 0.1
 kfselect_min_angle: 20
 # If the median disparity from the last keyframe is smaller,
 # do not take a new keyframe
-# You can lower this value for more keyframes
-kfselect_min_disparity: 40
+# You can lower this value for more keyframes\
+# NOTE: forward motion reduce
+kfselect_min_disparity: 24
 # When taking a new keyframe,
 # we can already update the newly initialized seeds with old keyframes.
 # This is important for forward looking case.
@@ -53,7 +54,7 @@ update_seeds_with_old_keyframes: True
 # Most of the parameters are set to false for the consideration of processing time.
 # If you observe bad tracking because of light/expousre change,
 # enable the following parameters.
-# TODO:
+# NOTE:
 img_align_est_illumination_gain: false
 img_align_est_illumination_offset: false
 depth_filter_affine_est_offset: true
@@ -66,23 +67,22 @@ reprojector_affine_est_gain: false
 ########################################
 # Initialization
 # For a higher resolution, increase the value accordingly.
-#TODO: increase for resolution
+#NOTE: increase for resolution
 # ---------- disparity: important to turn down for forward car motion! Otherwise initialization will only work in curves!
-init_min_disparity: 15  # TODO: mark as most important
-# ----------
+init_min_disparity: 12  # NOTE: mark as most important
 init_min_features: 50
 automatic_reinitialization: true
 
 # Feature Detection
-#TODO: increase for resolution
-grid_size: 50 # Larger for larger images, for every cell you have max one feature.
-#TODO: increase for resolution
+#NOTE: increase for resolution
+grid_size: 22 # Larger for larger images, for every cell you have max one feature.
+#NOTE: increase for resolution
 n_pyr_levels: 5 # Increase for larger images (image align max minus one)
 detector_threshold_primary: 10 # Fast detector threshold
 detector_threshold_secondary: 200 # Edgelet detector threshold
 
 # Image Alignment
-#TODO: increase for resolution
+#NOTE: increase for resolution
 img_align_max_level: 5 # Increase this level by one if the image is double the width and height (752x480).
 img_align_min_level: 2
 
@@ -92,21 +92,24 @@ reprojector_max_n_kfs: 7 # Local map size. Larger is computationally more intens
 scan_epi_unit_sphere: False # for wide angle lens, set it to True.
 
 # Pose Optimization
-poseoptim_thresh: 2.0 # Reprojection outlier threshold (px), should be larger for larger images.
+# NOTE:
+poseoptim_thresh: 4.0 # Reprojection outlier threshold (px), should be larger for larger images.
 poseoptim_using_unit_sphere: False # For wide angle lens, set it to True
 
 # Depth Filter
 # How many times does the covariance need to decrease until a seed is considered converged.
 # Increase to get more accurate points
-# TODO:
-seed_convergence_sigma2_thresh: 10
+# NOTE:
+seed_convergence_sigma2_thresh: 220
 
 # IMU
 # Normally the prior should be 0 if not using IMU.
 use_imu: False
-poseoptim_prior_lambda: 0.0 # Gyroscope prior in pose optimization
-img_align_prior_lambda_rot: 0.0 # Gyroscope prior in sparse image alignment
-img_align_prior_lambda_trans: 0.0 # Constant velocity assumption prior in sparse image alignment
+poseoptim_prior_lambda: 0.0 # Gyroscope prior in pose optimization (used only with ceres backend)
+# KRAXEL EDIT: omitted here, hijacked further below for arbitraty motion prior
+#img_align_prior_lambda_rot: 0.1 # Gyroscope prior in sparse image alignment
+#img_align_prior_lambda_trans: 0.3 # Constant velocity assumption prior in sparse image alignment
+
 
 # Dense input
 publish_every_nth_dense_input: 5
@@ -121,3 +124,26 @@ mean_depth_inv: 0.3
 
 # Disable ceres backend
 use_ceres_backend: false
+
+# KRAXEL EDIT:
+# Toggle Motion Prior from arbitrary external pose tfs (For exmaple: wheel odometry or radar odometry).
+# Keep in mind that this will hijack and break some of the IMU params so better use vision-only frontend with tf motion prior.
+# If toggled, initialization REQUIRES external pose tfs to bootstrap the map with metric scale.  
+# After succesfull initialization the visual front-end can run even without pose tf messages present.
+use_motion_prior_from_tf : True  # Make sure use_imu is set to false if you toggle this
+
+# NOTE: KRAXEL EDIT: Abused as weights for our own motion prior given as tf
+# keep trust in rotation low as roll and pitch are not reliable from wheel odometry
+img_align_prior_lambda_rot: 0.1 # Gyroscope prior in sparse image alignment (overwritten by our own motion prior tf)
+img_align_prior_lambda_trans: 0.3 # Constant velocity assumption prior in sparse image alignment (overwritten by our own motion prior tf)
+  
+# Name of body/sensor frame of your motion prior (must match name in ros tf tree for both absolute pose as well as extrinsics to camera)
+motion_prior_tf_body_frame : base_link
+# name of source frame to which the pose is expressed in (example: world, odom, map. Depending on your own notation)
+motion_prior_tf_source_frame : odom
+
+# Required to catch extrinsic calibration between your external motion prior source and camera lense.
+# Actual extrinsic Tf must be manually provided in launch file. Make sure this frame name here matches
+# the name of your provided extrinsic ros tf from your launch file. 
+camera_lense_tf_frame : zed2i_left_camera_optical_frame  # If this lense frame is z-axis forward pointing make sure that your extrinsics match this rotation
+

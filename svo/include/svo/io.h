@@ -6,6 +6,9 @@
 namespace svo {
 namespace io {
 
+std::shared_ptr<svo::Transformation> poseFromTumByNsec(const std::string &tumFilePath, const uint64_t nsecRefStamp,bool allowTimediff = false);
+
+
 bool saveMap(
     const Map::Ptr& map,
     const std::string& save_dir,

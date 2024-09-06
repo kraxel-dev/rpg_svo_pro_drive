@@ -56,6 +56,12 @@ public:
   Transformation T_body_cam_;
   Transformation T_cam_body_;
 
+  // KRAXEL EDIT:
+  // Absolute poses of external odometry sensor with respect to some static world frame
+  std::shared_ptr<Transformation> T_world_odomsensor_ = nullptr; 
+  // Absolute odometry sensor pose expressed as camPose via extrinsic calibration
+  std::shared_ptr<Transformation> T_world_odomsensor_as_cam_ = nullptr;  
+
   // Features
   // All vectors must have the same length/cols at all time!
   // {
@@ -273,6 +279,15 @@ public:
     T_body_cam_ = T_cam_imu.inverse();
   }
 
+  // KRAXEL EDIT:
+  /// @brief Assign current pose of external odometry sensor expressed as camera pose with respect to some static world frame to this image. 
+  /// Assigned pose should be time-corresponding to this image. Conversion from odometry sensor to cam pose must happen with extrinsic calibration data beforehand
+  void set_T_world_odomsensor_as_cam(const Transformation& T_world_odomsensor_as_cam) {
+    
+    T_world_odomsensor_as_cam_ = std::make_shared<Transformation>(T_world_odomsensor_as_cam);   
+  }
+
+
   /// set new pose
   /// If setting T_f_w_ is desired, one should access T_f_w_ directly.
   inline void set_T_w_imu(const Transformation& T_w_imu)
@@ -479,7 +494,8 @@ public:
     for(const FramePtr& frame : frames_)
       frame->T_f_w_ = (T_W_B*frame->T_body_cam_).inverse();
   }
-
+  
+ 
   inline void setIMUState(const Eigen::Vector3d& imu_vel_w,
                           const Eigen::Vector3d& gyr_bias,
                           const Eigen::Vector3d& acc_bias)

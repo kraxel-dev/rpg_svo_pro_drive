@@ -78,6 +78,11 @@ struct InitializationOptions
   /// Reprojection threshold in pixels. The same as we also use in pose optimizer.
   double reproj_error_thresh = 2.0;
 
+  // KRAXEL EDIT:
+  /// Forces initialization step of visual-fronted to use the provided external motion prior. If toggled, initialization 
+  /// will refuse to proceed when external motion prior is not provided. This is to guarantee metric scale for the map.
+  /// See BaseOptions for more context. 
+  bool use_motion_prior_from_tf_for_initialization = false;
 
   // TODO: what are these for? (introduced by Art)
   double expected_avg_depth = 1.0;
@@ -244,7 +249,8 @@ bool triangulateAndInitializePoints(
     const double reprojection_threshold,
     const double depth_at_current_frame,
     const size_t min_inliers_threshold,
-    AbstractInitialization::FeatureMatches& matches_cur_ref);
+    AbstractInitialization::FeatureMatches& matches_cur_ref,
+    const bool is_depth_with_metric_scale = false);
 
 void triangulatePoints(
     const Frame& frame_cur,
@@ -260,7 +266,8 @@ void rescaleAndInitializePoints(
     const AbstractInitialization::FeatureMatches& matches_cur_ref,
     const Positions& points_in_cur,
     const Transformation& T_cur_ref,
-    const double depth_at_current_frame);
+    const double depth_at_current_frame,
+    const bool is_depth_with_metric_scale = false);
 
 void displayFeatureTracks(
     const FramePtr& frame_cur,

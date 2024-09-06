@@ -50,6 +50,7 @@ SvoInterface::SvoInterface(
     const ros::NodeHandle& private_nh)
   : nh_(nh)
   , pnh_(private_nh)
+  , tfl_(tfb_)
   , pipeline_type_(pipeline_type)
   , set_initial_attitude_from_gravity_(
       vk::param<bool>(pnh_, "set_initial_attitude_from_gravity", true))
@@ -325,7 +326,7 @@ bool SvoInterface::setImuPrior(const int64_t timestamp_nanoseconds)
   return true;
 }
 
-void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)
+void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE: actual mono ros callback
 {
   if(idle_)
     return;
@@ -333,6 +334,7 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)
   cv::Mat image;
   try
   {
+    // KRAXEL EDIT: auto convert to grayscale
     image = cv_bridge::toCvCopy(msg, "mono8")->image;
   }
   catch (cv_bridge::Exception& e)
@@ -340,6 +342,7 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)
     ROS_ERROR("cv_bridge exception: %s", e.what());
   }
 
+  VLOG(40) << "Mono callback triggered!";
   std::vector<cv::Mat> images;
   images.push_back(image.clone());
 
@@ -351,8 +354,22 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)
 
   imageCallbackPreprocessing(msg->header.stamp.toNSec());
 
-  processImageBundle(images, msg->header.stamp.toNSec());
+  // KRAXEL EDIT:
+  // -------------------- Some preprocessing in case motion prior should be retrieved from an additional odometry tf
+  if (this->svo_->options_.use_motion_prior_from_tf)
+  {
+    // Fetch extrinsic calibration between camera lense and external odometry sensor
+    prepareExtrinsicsOdometrySensorToCam(msg->header.stamp);
+    // Fetch absolute pose tf from odometry sensor source to be used as motion prior later on
+    preparePoseFromOdometryPrior(msg->header.stamp);
+    // check whether init conditions with motion prior from external odometry source are met after preparing
+    if (!checkOdometryPriorInitCondition()) {
+      return;
+    }
+  }
 
+  // -------------------- Regular processing
+  processImageBundle(images, msg->header.stamp.toNSec());
 
   publishResults(images, msg->header.stamp.toNSec());
 
@@ -444,6 +461,127 @@ void SvoInterface::subscribeImu()
   imu_thread_ = std::unique_ptr<std::thread>(
         new std::thread(&SvoInterface::imuLoop, this));
   sleep(3);
+}
+
+void SvoInterface::preparePoseFromOdometryPrior(const ros::Time &msg_stamp)
+{
+  /// Section below fetches the absolute pose of the motion prior sensor (matching the current image) to use it
+  /// later as motion prior in the vision frontend
+
+  // -------------------- define tf frame names TODO: more graceful way to access these params
+  std::string child_frame = svo_->options_.motion_prior_tf_body_frame;  // motion prior sensor/body frame (for example: wheel odom or radar )
+  std::string parent_frame = svo_->options_.motion_prior_tf_source_frame;  // static world frame in which pose of motion prior sensor is expressed in
+
+  // -------------------- Fetch absolute pose tf
+  geometry_msgs::TransformStamped::ConstPtr fetched_tf_ptr = nullptr; // pointer to fetched eigen pose of tf. Stays nullptr if tf fetching failed
+  try {
+      // get tf for desired timestamp. block and wait for specified amount of secs if desired tf not yet available
+      const geometry_msgs::TransformStamped fetchedTf = tfb_.lookupTransform(parent_frame, child_frame, msg_stamp, ros::Duration(0.03));
+      
+      fetched_tf_ptr = boost::make_shared<geometry_msgs::TransformStamped>(fetchedTf);  // convert to pointer
+      SVO_INFO_STREAM("Retrieved absolute pose of motion prior sensor as tf!");
+  }
+  catch (const std::exception &e) {
+      SVO_WARN_STREAM(e.what());
+      SVO_WARN_STREAM("Failed to catch tf " << child_frame << " in " << parent_frame << " as absolute pose of motion prior sensor!");
+      fetched_tf_ptr = nullptr;
+  }
+
+  // -------------------- store absolute pose from motion prior sensor for later use
+  curr_odometry_prior_tf_ = fetched_tf_ptr;
+  if (curr_odometry_prior_tf_)
+  {
+    // convert tf to Eigen::pose
+    Eigen::Affine3d poseEigen = tf2::transformToEigen(*curr_odometry_prior_tf_);
+    Transformation curr_motion_prior_pose(poseEigen.matrix());
+
+    // pass down absolute odometry pose prior to svo instance
+    svo_->T_world_odomsensor_ = std::make_shared<Transformation>(curr_motion_prior_pose);
+  }
+  else {
+    svo_->T_world_odomsensor_ = nullptr;
+  }
+}
+
+void SvoInterface::prepareExtrinsicsOdometrySensorToCam(const ros::Time & msg_stamp)
+{
+  if (svo_->T_odomsensor_cam_)
+  {
+    // Extrinsics alread retrieved.
+    return;
+  }
+
+  // -------------------- define tf frame names TODO: more graceful way to access these params
+  std::string odometry_sensor_frame = svo_->options_.motion_prior_tf_body_frame;  // sensor frame of additional odometry source 
+  std::string camera_frame = svo_->options_.camera_lense_tf_frame;  // camera lense frame (see parameter file)
+
+  // -------------------- Fetch relative extrnisic tf
+  geometry_msgs::TransformStamped::ConstPtr fetched_tf_ptr = nullptr; // pointer to fetched eigen pose of tf. Stays nullptr if tf fetching failed
+  try {
+      // get tf for desired timestamp. block and wait for specified amount of secs if desired tf not yet available
+      const geometry_msgs::TransformStamped fetched_extrtinsic_tf = tfb_.lookupTransform(odometry_sensor_frame, camera_frame, msg_stamp, ros::Duration(0.03));
+      
+      fetched_tf_ptr = boost::make_shared<geometry_msgs::TransformStamped>(fetched_extrtinsic_tf);  // convert to pointer
+      SVO_INFO_STREAM("Retrieved extrinsic calibration between odometry sensor and camera!");
+  }
+  catch (const std::exception &e) {
+      SVO_WARN_STREAM(e.what());
+      SVO_WARN_STREAM("Failed to catch tf " << camera_frame << " in " << odometry_sensor_frame << " as extrinsic calibration between odometry sensor and camera!");
+      fetched_tf_ptr = nullptr;
+  }
+
+  // -------------------- Pass extrinsics down to svo instance after converting to pose data
+  if (fetched_tf_ptr)
+  {
+    // convert tf to Eigen::pose and then to svo::Transformation
+    Eigen::Affine3d pose_eigen = tf2::transformToEigen(*fetched_tf_ptr);
+
+    // overwrite rotational part of pose to guarantee quaternion is normalized
+    Eigen::Quaterniond quat(pose_eigen.rotation());
+    pose_eigen.matrix().block<3,3>(0,0) = quat.normalized().toRotationMatrix();
+
+    Transformation T_odometrysensor_cam(pose_eigen.matrix());  // Pose of camera frame expressed in odometry sensor frame
+
+    // pass down extrinsic calib pose to svo instance
+    svo_->T_odomsensor_cam_ = std::make_shared<Transformation>(T_odometrysensor_cam);
+  }
+  else {
+    svo_->T_odomsensor_cam_ = nullptr;
+  }
+}
+
+bool SvoInterface::checkOdometryPriorInitCondition()
+{
+  // -------------------- Check for extrinsics
+  if (!svo_->T_odomsensor_cam_)
+  {
+    SVO_ERROR_STREAM("Missing extrnisic calibration between camera and specified external odometry source! Cannot set motion prior from external sensor this way!");
+    return false;
+  }
+
+  // -------------------- Check init condition
+  if (!svo_->T_world_odomsensor_) {
+    
+    /// Break current iteration if we are in init stage and poseTf of motion prior sensor is not available for current image,
+    /// as absolute pose is required in initialization to retrieve metric scale
+    if (svo_->stage() != Stage::kTracking && svo_->stage() != Stage::kRelocalization ) {
+      
+      if (!svo_->last_frames_) {
+        SVO_ERROR_STREAM("Skipping image for as very first init reference frame due to missing motion prior sensor pose!");
+      } 
+      else {
+        SVO_ERROR_STREAM("Skipping image for init triangulation due to missing motion prior sensor pose!");
+      }
+
+      // notify upstream to break iteration for current image
+      // skip to try for next image during init
+      return false;
+    }
+  }
+
+  // when not in init, we dont care whether we get odometry prior or not
+  return true;
+
 }
 
 void SvoInterface::subscribeImage()

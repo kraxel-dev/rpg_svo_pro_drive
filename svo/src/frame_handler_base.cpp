@@ -6,6 +6,13 @@
 // This file is subject to the terms and conditions defined in the file
 // 'LICENSE', which is part of this source code package.
 
+#include <sstream>
+#include <limits>
+
+#include <boost/multiprecision/cpp_dec_float.hpp>
+#include <boost/multiprecision/cpp_bin_float.hpp>
+#include <boost/multiprecision/float128.hpp>
+
 #include "svo/frame_handler_base.h"
 
 #include <functional>
@@ -21,6 +28,8 @@
 #include <svo/direct/feature_detection_utils.h>
 #include <svo/direct/matcher.h>
 #include <svo/tracker/feature_tracker.h>
+#include <svo/io.h>
+
 
 #ifdef SVO_LOOP_CLOSING
 #include <svo/online_loopclosing/loop_closing.h>
@@ -50,6 +59,7 @@ inline double distanceFirstTwoKeyframes(svo::Map& map)
        second_kf->T_world_imu().getPosition()).norm();
   return dist;
 }
+
 }
 
 namespace svo
@@ -143,7 +153,7 @@ FrameHandlerBase::FrameHandlerBase(const BaseOptions& base_options, const Reproj
   //detector_options2.detector_type = DetectorType::kGridGrad;
 
   depth_filter_.reset(new DepthFilter(depthfilter_options, detector_options2, cams_));
-  initializer_ = initialization_utils::makeInitializer(init_options, tracker_options, detector_options, cams_);
+  initializer_ = initialization_utils::makeInitializer(init_options, tracker_options, detector_options, cams_);  // NOTE: initializer type called here
   overlap_kfs_.resize(cams_->getNumCameras());
 
   VLOG(1) << "SVO initialized";
@@ -192,6 +202,7 @@ bool FrameHandlerBase::addImageBundle(const std::vector<cv::Mat>& imgs, const ui
   {
     SVO_STOP_TIMER("pyramid_creation");
   }
+
   // Process frame bundle.
   return addFrameBundle(frame_bundle);
 }
@@ -208,6 +219,8 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
   if (set_start_)
   {
     // Temporary copy rotation prior. TODO(cfo): fix this.
+    VLOG(40) << "Resetting to start conditions!";  
+    
     Quaternion R_imu_world = R_imu_world_;
     bool have_rotation_prior = have_rotation_prior_;
     resetAll();
@@ -216,7 +229,25 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     setInitialPose(frame_bundle);
     stage_ = Stage::kInitializing;
   }
+  
+  // KRAXEL EDIT
+  // NOTE: this pose assignment is embedded so deeply so that the above set_start_ reset does not delete the pose of the ref image during init
+  // -------------------- Assign absolute odometry prior pose to current frame
+  if (T_world_odomsensor_ && T_odomsensor_cam_)  // check for extrinsics and pose from external source. If ptr to pose exists is decided upstream
+  {
+    for (auto &&frame : *frame_bundle)
+    {
+      // -------------------- Transform absolute odometry pose to be expressed as absolute camera pose
+      VLOG(40) << "Passing absolute pose from odometry prior to current frame!";
+      // right transform with extrinsic to express odometry pose as camera pose
+      Transformation T_world_odomsensor_as_cam = *T_world_odomsensor_ * *T_odomsensor_cam_ ;  // absolute odometry pose expressed as camera pose
 
+      // pass absolute cam pose to the frame object
+      frame->set_T_world_odomsensor_as_cam(T_world_odomsensor_as_cam);
+    }
+  }
+
+  // -------------------- original code
   if (stage_ == Stage::kPaused)
   {
     return false;
@@ -348,6 +379,9 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
     if (last_frames_)
     {
       VLOG(40) << "Predict pose of new image using motion prior.";
+
+      // KRAXEL EDIT:
+      // -------------------- calc and setting of motion prior from tf is embedded in function below
       getMotionPrior(false);
 
       // set initial pose estimate
@@ -548,7 +582,7 @@ bool FrameHandlerBase::addFrameBundle(const FrameBundlePtr& frame_bundle)
   }
   // Call callbacks.
   VLOG(40) << "Triggering addFrameBundle() callbacks...";
-  triggerCallbacks(last_frames_);
+  triggerCallbacks(last_frames_);  // NOTE: frame handler mono callbacks (non-ros) are called here (mono processing callback)
   return true;
 }
 
@@ -622,15 +656,29 @@ size_t FrameHandlerBase::sparseImageAlignment()
     SVO_START_TIMER("sparse_img_align");
   }
   sparse_img_align_->reset();
-  if (have_motion_prior_)
+  if (have_motion_prior_)  // NOTE: motion prior was deemed avaliable and stored upstream
   {
     SVO_DEBUG_STREAM("Apply IMU Prior to Image align");
-    double prior_trans = options_.img_align_prior_lambda_trans;
-    if (map_->size() < 5)
-      prior_trans = 0; // during the first few frames we don't want a prior (TODO)
+    VLOG(40) << "Apply IMU Prior to Image align";
 
+    // KRAXEL EDIT
+    // -------------------- force weights for considereing motion prior from tf
+    double prior_trans = options_.img_align_prior_lambda_trans;
+    double prior_rot = options_.img_align_prior_lambda_rot;
+
+    if (map_->size() < 5) {
+      VLOG(40) << "Bootstrapping Map. no motion prior wanted";
+      prior_trans = 0; // during the first few frames we don't want a prior (TODO)
+      prior_rot = 0;
+    }
+
+    // NOTE: insert relative pose prior
+    VLOG(40) << "Actually setting prior for image alignment worker!";
+    VLOG(40) << "Weighting translation prior: " << prior_trans;
+    VLOG(40) << "Weighting rotation: prior: " << prior_rot;
+    // KRAXEL EDIT
     sparse_img_align_->setWeightedPrior(T_newimu_lastimu_prior_, 0.0, 0.0,
-                                        options_.img_align_prior_lambda_rot,
+                                        prior_rot,
                                         prior_trans, 0.0, 0.0);
   }
   sparse_img_align_->setMaxNumFeaturesToAlign(options_.img_align_max_num_features);
@@ -1126,6 +1174,42 @@ bool FrameHandlerBase::needNewKf(const Transformation&)
 
 void FrameHandlerBase::getMotionPrior(const bool /*use_velocity_in_frame*/)
 {
+  
+  // KRAXEL EDIT
+  // -------------------- Use motion prior from external odometry source (if activated) and ignore IMU
+  if (options_.use_motion_prior_from_tf) {
+  
+      // -------------------- fetch motion prior from either external odometry as camPoses
+      std::shared_ptr<svo::Transformation> T_last = last_frames_->at(0).get()->T_world_odomsensor_as_cam_;
+      std::shared_ptr<svo::Transformation> T_new = new_frames_->at(0)->T_world_odomsensor_as_cam_;
+      
+      if (T_last && T_new) {
+        
+        // -------------------- get relative camera motion from absolute cam poses
+        
+        // left transform new absolute campose into coordsystem of old absolute campose
+        svo::Transformation T_rel(T_last->inverse() *  *T_new) ;  // relative pose from last pose to current pose
+        VLOG(40) << "Relative motion between current and last image calculated!";
+        // cout instead of log to properly display the translations
+        std::cout << "Translation in x:" << T_rel.getPosition().x()  << std::endl; 
+        std::cout << "Translation in y:" << T_rel.getPosition().y()  << std::endl; 
+        std::cout << "Translation in z:" << T_rel.getPosition().z()  << std::endl; 
+
+        // -------------------- force hardcoded motion prior 
+        VLOG(40) << "Setting motion prior for new image using poses from external odometry source!"; 
+        T_newimu_lastimu_prior_ = T_rel.inverse();
+        have_motion_prior_ = true;
+      }
+      else {
+        VLOG(40) << "Setting motion prior using poses from external odometry source failed for this image! Proceed without prior!"; 
+        have_motion_prior_ = false;
+      }
+    // break this function and ignore IMU stuff below if motion prior from tf is toggled
+    return;
+  }
+  
+  
+  // -------------------- original code
   if (have_rotation_prior_)
   {
     VLOG(40) << "Get motion prior from provided rotation prior.";
