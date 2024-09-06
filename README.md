@@ -15,7 +15,7 @@ This forked repo cointains a modified version of SVO's **monocular** visual-fron
 - [Original readme](#original-readme)
 ## Limitations
 
-- Monocular front-end only, when using motion prior from external odometr. IMU or stereo cannot be used in conjuction. When external odometry is toggled off, SVO should behave as the original version.
+- Monocular front-end only, when using motion prior from external odometry. IMU or stereo cannot be used in conjuction. When external odometry is toggled off, SVO should behave as the original version.
 - No ceres backend when using motion prior from external odometry. Atleast not yet
 - No global map and loop closure when using motion prior from external odometry.
 

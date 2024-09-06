@@ -354,12 +354,13 @@ void SvoInterface::monoCallback(const sensor_msgs::ImageConstPtr& msg)  // NOTE:
 
   imageCallbackPreprocessing(msg->header.stamp.toNSec());
 
+  // KRAXEL EDIT:
   // -------------------- Some preprocessing in case motion prior should be retrieved from an additional odometry tf
   if (this->svo_->options_.use_motion_prior_from_tf)
   {
     // Fetch extrinsic calibration between camera lense and external odometry sensor
     prepareExtrinsicsOdometrySensorToCam(msg->header.stamp);
-    // Fetch absolute pose tf from odometry sensor source to be used as motiont prior later on
+    // Fetch absolute pose tf from odometry sensor source to be used as motion prior later on
     preparePoseFromOdometryPrior(msg->header.stamp);
     // check whether init conditions with motion prior from external odometry source are met after preparing
     if (!checkOdometryPriorInitCondition()) {
