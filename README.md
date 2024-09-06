@@ -3,24 +3,31 @@
 This forked repo cointains a modified version of SVO's **monocular** visual-frontend that can incorporate external poses as **motion prior** from an **arbitrary** odometry sensor as long as the poses are published as a dynamic ros tf. Optimal for prototyping visual odometry for automotive use-cases with sensors that provide metric scale like wheel-encoders, radars or GPS.
 
 # At a glance
-
+## Table of content
+- [Preface](#preface)
+  - [Why SVO pro?](#why-svo-pro)
+- [Install](#install)
+- [Tuning and preparing with own data](#prepare-your-own-data-and-parameter-files)
+  - [External odometry source](#external-odometry-source)
+  - [Pose format](#pose-format)
+  - [Extrinsic calibration from odometry source to lense](#extrinsic-calibration-from-odometry-sensor-to-camera-lense)
+- [Usage](#usage)
+- [Original readme](#original-readme)
 ## Limitations
 
 - Monocular front-end only, when using motion prior from external odometr. IMU or stereo cannot be used in conjuction. When external odometry is toggled off, SVO should behave as the original version.
-
 - No ceres backend when using motion prior from external odometry. Atleast not yet
-
 - No global map and loop closure when using motion prior from external odometry.
 
 # Preface
 
 ## Why SVO Pro?
 
-Compared to feature-based methods, **direct** visual odometry is more robust in **repetitve** and **low textured** scenes like parking garages or other man-made structures. SVO Pro is one of the direct visual (inertial) odometry (VIO) ros-packages that are well structured, easy to setup and easy to protype. Most importantly it can directly incorporate **motion priors** into its photometric front-end (read original paper for more details) opening up the possibility to **inject motion priors** from an **arbitrary odometry sensor** with **minimal coding effort** and **without breaking the consistency** of the system. 
+Compared to feature-based methods, **direct** visual odometry is more robust in **repetitve** and **low textured** scenes like parking garages or other man-made structures. SVO Pro is a direct visual (inertial) odometry (VIO) ros-package that is well structured, easy to setup and easy to protype. Most importantly it can directly incorporate **motion priors** into its photometric front-end (read original paper for more details) opening up the possibility to **inject motion priors** from an **arbitrary odometry sensor** with **minimal coding effort** and **without breaking the consistency** of the system. 
 
 With this type of interface, the monocular front-end, which is still known to be a brittle component of many visual odometry algorithms in real-world scenarios, can directly recover metric scale and can quickly be robustified with odometry sensors available in the automotive-domain. This holds a lot of potential as generic building block to to rapidly prototype all sorts of automotive-centric applications. 
 
-## Motion prior vs fusing external odometry into the factor graph
+## Front-end motion prior vs fusing external odometry into the factor graph
 
 When done properly, external odometry should be fused in the VIO back-end factor graph. This requires, to some extend, engineering time and know-how. And even then it can still be a struggle to wrap your head around why your front-end  won't properly initialize. If you simply want to utilize your dusting wheel-encoder or radar data for quick-and-dirty proof-of-concepts, hijacking SVOs motion prior is a great starting point.
 
@@ -30,7 +37,7 @@ Original SVO Pro has definitely been proven in the past (not by me) to work with
 
 - Planar and linear motion of car-like vehicles can lead to degeneracy for monocular visual inertial configurations (<https://maplab.asl.ethz.ch/docs/master/pages/tutorials-rovioli/A_ROVIOLI-Introduction.html#known-issues>). For quick proof-of-concepts, stable metric scale can be obtained faster from more reliable odometry sources.
 - Low-cost IMUs can be quite delicate. Unless you've got a bit of experience, calibrating and debugging the intrinsics of your IMU can be time consuming, error prone and **hard to validate**. It's faster to integrate less care-demanding sensors like wheel odometry to get your VO up and running.
-- Stereo cameras are a nice way to directly obtain metric scale but without a bit of digging it is not easy to determine what baseline to choose for your scene. Also many conventional cars are still limited to monocular cameras.
+- Stereo cameras are a nice way to directly obtain metric scale but without a bit of digging it is not easy to determine what baseline to choose for your scene. Furthermore, with stereo only you are still subjugated to the weaknesses of a vision only sensor source.
 
 # Install
 
@@ -56,37 +63,14 @@ Follow [compile instructions](https://github.com/uzh-rpg/rpg_svo_pro_open/tree/m
 catkin build
 ```
 
-# Run
-
-## Run mono example with zed2i camera
-
-- Run on zed2i mono rosbag data
-
-  ```
-  roslaunch svo_ros run_from_bag_zed2i.launch cam_name:=zed2i_left_rectified
-  ```
-
-- Play bag
-
-  ```
-  # should contain absolute wheel odom poses to get the motion prior running
-  rosbag play backwards_2_converted.bag -s 10 --clock -r 0.4 --pause
-  ```
-
-- Run dynamic tf completer to provide dynamic tfs to the wheel odom poses
-
-  ```
-  rosrun ros_helper dynamic_tf_completer.py
-  ```
-
 
 # Prepare your own data and parameter files
 
 All sensor data should be bundled into rosbag format or published live as ros stream. Example params for a setup with wheel-odometry and zed2i mono images can be found here:
 
-- [VIO params for zed2i and wheel-encoder](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml)
-- [zed2i calibration file](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/calib/zed2i_left_rectified.yaml)
-- [zed2i launch file](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/launch/frontend/run_from_bag_zed2i.launch) including extrinsic calibration from odometry sensor to camera lense
+- [pinhole_zed2i.yaml](svo_ros/param/pinhole_zed2i.yaml) (VIO parameters)
+- [zed2i_left_rectified.yaml](svo_ros/param/calib/zed2i_left_rectified.yaml) (cam calib)
+- [run_from_bag_zed2i.launch](svo_ros/launch/frontend/run_from_bag_zed2i.launch) including extrinsic calibration from odometry sensor to camera lense
 
 Example for running the setup:
 
@@ -110,19 +94,63 @@ Ideally the poses come with higher frequency than the image data. When using slo
 
 Publish poses of external odometry source as dynamic tf. If your pose is only being published as `odometry` or `pose` msg you can write a small python node that subscribes to these msgs and publish corresponding tfs accordingly. Make sure to feed the exact names of `child` and `parent` frame of your pose tf at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L141) of your parameter file. Otherwise SVO interface will fail to fetch your pose from the tf tree to use as motion prior.
 
-### Coordinate frame convetion of external poses
+### Coordinate frame convention of external poses
 
 When using motion prior from external source, the fetched absolute poses between iterations are used to calculate relative motion. Therefore, the external absolute poses can be with respect to any static reference frame as long as they all refer to the **same** static frame that stays consistent over time.
 
-### Extrninsic calibration from odometry sensor to camera lense
+### Availibility of external poses
 
-This is the not-so-fun part. You must provide the extrinsic calibration from your odometry sensor to the camera lense yourself. Extrinsics must be published as static ros tf and can be placed in [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/launch/frontend/run_from_bag_zed2i.launch#L11) of your launch file. Make sure that names of **source and target frame** in your launch file **match** the names of **body and camera frame** that you provide at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L148) of your parameter file. Otherwise extrinsics cannot be fetched and the motion of the external odometry sensor cannot transformed into the motion of the camera.
+During initialization of the front-end, external poses must be available. They are required to bootstrap the initial map with metric scale. If either the very first image or the images after minimal disparity has been reached fail to fetch an external pose, the system won't initialize.  
 
-Provide the extrnisics such that the pose of the camera lense (z-axis pointing forwards) is expressed in the local body-frame of the odometry sensor, not the other way around.
+After succesfull initialization the visual front-end can run even without external pose tf messages being present. You can cut your external pose stream after initialization to check how the vision only front-end holds up in a metric map. 
 
-Another important step is to set the extrinsic calibration from camera to IMU at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/calib/zed2i_left_rectified.yaml#L24) of your calib file to the identity transform. Even though IMU is not being used, the motion prior lives in the body frame of the IMU, **not** in the camera frame. To avoid breaking the original codebase it is kept like that.
+### Weighting of external poses
 
-## Mono camera
+Define how much the external poses should be trusted in the motion prior in [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L137) of the param file.
+
+### Extrinsic calibration from odometry sensor to camera lense
+
+This is the not-so-fun part. You must provide the extrinsic calibration from your odometry sensor to the camera lense yourself. Extrinsics must be published as static ros tf and can be placed in [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/launch/frontend/run_from_bag_zed2i.launch#L11) of your launch file. Make sure that names of **source** and **target frame** in your launch file **match** the names of **body** and **camera frame** that you provide at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L148) of your parameter file. Otherwise extrinsics cannot be fetched and the motion of the external odometry sensor won't be transformed into the motion of the camera.
+
+Provide the extrinsics such that the pose of the camera lense (z-axis pointing forwards) is expressed in the local body-frame of the odometry sensor, not the other way around.
+
+Another important step is to set the extrinsic calibration from camera to IMU at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/calib/zed2i_left_rectified.yaml#L24) of your calib file to the identity transform. Even though IMU is not being used, the motion prior lives in the body frame of the IMU, **not** in the camera frame. It is kept like that to keep consistency with the orgininal codebase.
+
+## Some additional details on implementation, sensors and tuning 
+### Initialization and minimal disparity
+When operating with slow and linear moving vehicles, feature disparity between frames during initialization will grow slower than during drone take off. Reduce the `min disparity` parameter similar to [here](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L72) to allow the front-end to trigger triangulation during init. 
+
+Initialization with external pose currently only implemented with the 5-point initializer. The translational component of the external pose is used to triangulate and bootstrap the map between 2 frames on metric scale. For the rotational component the original rotation from the 5-point essential matrix is kept for triangulation as it is more trustworthy in roll and pitch compared to a wheel-encoder orientation.
+See this [section](svo/src/initialization.cpp#L384) in `initialization.cpp` for implementation details. 
+### More detailed tuning and parameter explanation
+For a more detailed explanation on each parameter of the params.yaml, check out this [header file](svo/include/svo/frame_handler_base.h#L41). 
+### Rolling shutter cameras
+Rolling shutter cameras as the zed2i should be avoided when using direct VSLAM methods. Though, for the data I tested on (vehicles operating on very low speeds: <5mph ), the zed2i produced satisfactory results.
+
+# Usage
+The data this package was validated on is company internal property. Unfortunately, a full working minimal example to run the algorithm on that real-life data cannot be provided. Below is still an example on how to run this package in a hypothetical setup.
+
+## Run mono example with zed2i camera
+
+- Run on zed2i mono rosbag data
+
+  ```
+  roslaunch svo_ros run_from_bag_zed2i.launch cam_name:=zed2i_left_rectified
+  ```
+
+- Play bag
+
+  ```
+  # Should contain absolute wheel odom poses to get the motion prior running
+  rosbag play backwards_2_converted.bag -s 10 --clock -r 0.4 --pause
+  ```
+
+- Run dynamic tf completer to provide dynamic tfs to the wheel odom poses
+
+  ```
+  # Not included in this repo (yet)
+  rosrun ros_helper dynamic_tf_completer.py
+  ```
 
 # Original Readme
 
