@@ -9,6 +9,7 @@ This forked repo cointains a modified version of SVO's **monocular** visual-fron
 - [Install](#install)
 - [Implementation details](#implementation-details)
 - [Tuning and preparing your own data](#prepare-your-own-data-and-parameter-files)
+  - [Parameter files and sensor data](#parameter-files-and-sensor-data)
   - [External odometry source](#external-odometry-source)
     - [Pose format](#pose-format)
     - [External pose coodrinate-frame convention](#coordinate-frame-convention-of-external-poses)
@@ -83,6 +84,7 @@ Check the following code sections to see the inner workings of the pose fusion. 
 
 # Prepare your own data and parameter files
 
+## Parameter files and sensor data
 All sensor data should be bundled into rosbag format or published live as ros stream. Example params for a setup with wheel-odometry and zed2i mono images can be found here:
 
 - [pinhole_zed2i.yaml](svo_ros/param/pinhole_zed2i.yaml) (VIO parameters)
@@ -109,7 +111,7 @@ Ideally the poses come with higher frequency than the image data. When using slo
 
 ### Pose format
   
-Publish absolute poses of external odometry source as dynamic tf. If your pose is only being published as `odometry` or `pose` `msg` you can write a small python node that subscribes to these msgs and publish corresponding tfs accordingly. Make sure to feed the exact names of `child` and `parent` frame of your pose tf at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L141) of your parameter file. Otherwise SVO interface will fail to fetch your pose from the tf tree to use as motion prior.
+Publish absolute poses of external odometry source as dynamic tf. If your pose is only being published as `odometry` or `pose` `msg` you can write a small python node that subscribes to these msgs and publish corresponding tfs accordingly. Make sure to feed the exact names of `child` and `parent` frame of your pose tf at [this section](svo_ros/param/pinhole_zed2i.yaml#L141) of your parameter file. Otherwise SVO interface will fail to fetch your pose from the tf tree to use as motion prior.
 
 ### Coordinate frame convention of external poses
 
@@ -123,19 +125,19 @@ After succesfull initialization the visual front-end can run even without extern
 
 ### Weighting of external poses
 
-Define how much the external poses should be trusted in the motion prior in [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L137) of the param file.
+Define how much the external poses should be trusted in the motion prior in [this section](svo_ros/param/pinhole_zed2i.yaml#L137) of the param file.
 
 ### Extrinsic calibration from odometry sensor to camera lense
 
-This is the not-so-fun part. You must provide the extrinsic calibration from your odometry sensor to the camera lense yourself. Extrinsics must be published as static ros tf and can be placed in [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/launch/frontend/run_from_bag_zed2i.launch#L11) of your launch file. Make sure that names of **source** and **target frame** in your launch file **match** the names of **body** and **camera frame** that you provide at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L148) of your parameter file. Otherwise extrinsics cannot be fetched and the motion of the external odometry sensor won't be transformed into the motion of the camera.
+This is the not-so-fun part. You must provide the extrinsic calibration from your odometry sensor to the camera lense yourself. Extrinsics must be published as static ros tf and can be placed in [this section](svo_ros/launch/frontend/run_from_bag_zed2i.launch#L11) of your launch file. Make sure that names of **source** and **target frame** in your launch file **match** the names of **body** and **camera frame** that you provide at [this section](svo_ros/param/pinhole_zed2i.yaml#L148) of your parameter file. Otherwise extrinsics cannot be fetched and the motion of the external odometry sensor won't be transformed into the motion of the camera.
 
 Provide the extrinsics such that the pose of the camera lense (z-axis pointing forwards) is expressed in the local body-frame of the odometry sensor, not the other way around.
 
-Another important step is to set the extrinsic calibration from camera to IMU at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/calib/zed2i_left_rectified.yaml#L24) of your calib file to the identity transform. Even though IMU is not being used, the motion prior lives in the body frame of the IMU, **not** in the camera frame. It is kept like that to keep consistency with the orgininal codebase.
+Another important step is to set the extrinsic calibration from camera to IMU at [this section](svo_ros/param/calib/zed2i_left_rectified.yaml#L24) of your calib file to the identity transform. Even though IMU is not being used, the motion prior lives in the body frame of the IMU, **not** in the camera frame. It is kept like that to keep consistency with the orgininal codebase.
 
 ## Some additional details on implementation, sensors and tuning 
 ### Initialization and minimal disparity
-When operating with slow and linear moving vehicles, feature disparity between frames during initialization will grow slower than during drone take off. Reduce the `min disparity` parameter similar to [here](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L72) to allow the front-end to trigger triangulation during init. 
+When operating with slow and linear moving vehicles, feature disparity between frames during initialization will grow slower than during drone take off. Reduce the `min disparity` parameter similar to [here](svo_ros/param/pinhole_zed2i.yaml#L72) to allow the front-end to trigger triangulation during init. 
 
 Initialization with external pose currently only implemented with the 5-point initializer. The translational component of the external pose is used to triangulate and bootstrap the map between 2 frames on metric scale. For the rotational component the original rotation from the 5-point essential matrix is kept for triangulation as it is more trustworthy in roll and pitch compared to a wheel-encoder orientation.
 See this [section](svo/src/initialization.cpp#L384) in `initialization.cpp` for implementation details. 
