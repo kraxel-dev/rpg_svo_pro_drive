@@ -7,10 +7,14 @@ This forked repo cointains a modified version of SVO's **monocular** visual-fron
 - [Preface](#preface)
   - [Why SVO pro?](#why-svo-pro)
 - [Install](#install)
-- [Tuning and preparing with own data](#prepare-your-own-data-and-parameter-files)
+- [Implementation details](#implementation-details)
+- [Tuning and preparing your own data](#prepare-your-own-data-and-parameter-files)
   - [External odometry source](#external-odometry-source)
-  - [Pose format](#pose-format)
-  - [Extrinsic calibration from odometry source to lense](#extrinsic-calibration-from-odometry-sensor-to-camera-lense)
+    - [Pose format](#pose-format)
+    - [External pose coodrinate-frame convention](#coordinate-frame-convention-of-external-poses)
+    - [Weighting of external poses](#weighting-of-external-poses)
+    - [Extrinsic calibration from odometry source to lense](#extrinsic-calibration-from-odometry-sensor-to-camera-lense)
+  - [Additional thoughts on tuning and implementation](#some-additional-details-on-implementation-sensors-and-tuning)
 - [Usage](#usage)
 - [Original readme](#original-readme)
 ## Limitations
@@ -25,7 +29,7 @@ This forked repo cointains a modified version of SVO's **monocular** visual-fron
 
 Compared to feature-based methods, **direct** visual odometry is more robust in **repetitve** and **low textured** scenes like parking garages or other man-made structures. SVO Pro is a direct visual (inertial) odometry (VIO) ros-package that is well structured, easy to setup and easy to protype. Most importantly it can directly incorporate **motion priors** into its photometric front-end (read original paper for more details) opening up the possibility to **inject motion priors** from an **arbitrary odometry sensor** with **minimal coding effort** and **without breaking the consistency** of the system. 
 
-With this type of interface, the monocular front-end, which is still known to be a brittle component of many visual odometry algorithms in real-world scenarios, can directly recover metric scale and can quickly be robustified with odometry sensors available in the automotive-domain. This holds a lot of potential as generic building block to to rapidly prototype all sorts of automotive-centric applications. 
+With this type of interface, the **monocular front-end**, which is **still known to be a brittle** component of many visual odometry algorithms in real-world scenarios, can directly recover metric scale and quickly be robustified with odometry sensors available in the automotive-domain. This holds a lot of potential as generic building block to to rapidly prototype all sorts of automotive-centric applications. 
 
 ## Front-end motion prior vs fusing external odometry into the factor graph
 
@@ -57,12 +61,25 @@ Follow [cloning instructions](https://github.com/uzh-rpg/rpg_svo_pro_open/tree/m
 
 Follow [compile instructions](https://github.com/uzh-rpg/rpg_svo_pro_open/tree/master?tab=readme-ov-file#install-dependences) from original SVO Pro for building your workspace **without** the global map.
 
-- A simple build in your workspace should do the trick.
+- After following instructions from original repo, a simple `build` in your workspace should do the trick.
 
 ```
 catkin build
 ```
 
+# Implementation details
+Check the following code sections to see the inner workings of the pose fusion. More information is provided in the [Tuning and preparing your own data](#prepare-your-own-data-and-parameter-files) section.  
+1. How external odometry tfs and extrinsic calib from odom sensor to camera lense is fetched by svo:
+   - [svo_ros/src/svo_interface.cpp#L358](svo_ros/src/svo_interface.cpp#L358)
+1. How an absolute pose from external odom sensor is being expressed as absolute cam pose using extrinsic calibration and assigned to each frame:
+   - [svo/src/frame_handler_base.cpp#L236](svo/src/frame_handler_base.cpp#L236)
+1. How 2 absolute camposes between 2 images are transformed into relative camera motion and used to override IMU motion prior from original codebase:
+   - [svo/src/frame_handler_base.cpp#L1191](svo/src/frame_handler_base.cpp#L1191)
+1. How external odometry is used during initizalization to bootstrap the metric map:
+   - [svo/src/initialization.cpp#L383](svo/src/initialization.cpp#L383)  - stuffing external translation into 5 point essential matrix for initialization
+   - [svo/src/initialization.cpp#L384](svo/src/initialization.cpp#L384)  - retaining rotation recovered from 5 point essential matrix for initialization
+1. How monocular scale is bypassed during initialization when using external odometry:
+   - [svo/src/initialization.cpp#L871](svo/src/initialization.cpp#L871)
 
 # Prepare your own data and parameter files
 
@@ -91,8 +108,8 @@ Any source can be used as long as it provides **absolute** poses with respect to
 Ideally the poses come with higher frequency than the image data. When using slower sensors like GPS or LiDAR, the poses might need to be interpolated offline and rebagged.
 
 ### Pose format
-
-Publish poses of external odometry source as dynamic tf. If your pose is only being published as `odometry` or `pose` msg you can write a small python node that subscribes to these msgs and publish corresponding tfs accordingly. Make sure to feed the exact names of `child` and `parent` frame of your pose tf at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L141) of your parameter file. Otherwise SVO interface will fail to fetch your pose from the tf tree to use as motion prior.
+  
+Publish absolute poses of external odometry source as dynamic tf. If your pose is only being published as `odometry` or `pose` `msg` you can write a small python node that subscribes to these msgs and publish corresponding tfs accordingly. Make sure to feed the exact names of `child` and `parent` frame of your pose tf at [this section](https://github.com/kraxel-dev/rpg_svo_pro_drive/blob/inject_cam_pose_as_motion_prior/svo_ros/param/pinhole_zed2i.yaml#L141) of your parameter file. Otherwise SVO interface will fail to fetch your pose from the tf tree to use as motion prior.
 
 ### Coordinate frame convention of external poses
 
