@@ -3,7 +3,7 @@
 This forked repo cointains a modified version of SVO's **monocular** visual-frontend that can incorporate external poses as **motion prior** from an **arbitrary** odometry sensor as long as the poses are published as a dynamic ros tf. Optimal for prototyping visual odometry for automotive use-cases with sensors that provide metric scale like wheel-encoders, radars or GPS.
 
 # At a glance
-Up until the section [Original readme](#original-readme), the README decriptions, instructions and tuning guides are part of this forked project.
+Up until the section [Original readme](#original-readme), the following decriptions, instructions and tuning guides of this README are part of this forked project.
 ## Table of content
 - [Preface](#preface)
   - [Why SVO pro?](#why-svo-pro)
